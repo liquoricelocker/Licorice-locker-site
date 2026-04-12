@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} — Licorice Locker{% endblock %}
+{% block content %}
+<article class="product-detail-page">
+  {% if product_images %}
+  <div class="product-detail-hero-bleed">
+    <img
+      id="product-detail-hero-img"
+      class="product-detail-hero-img"
+      src="{{ url_for('static', filename=product_images[0].path) }}"
+      alt="{{ product.name }}"
+      width="1600"
+      height="900"
+      fetchpriority="high"
+    >
+  </div>
+  {% endif %}
+
+  <div class="panel product-detail">
+    <div class="product-detail-body {% if product_images and product_images|length > 1 %}product-detail-body--with-side-gallery{% elif not product_images %}product-detail-body--with-side-gallery{% endif %}">
+      {% if product_images and product_images|length > 1 %}
+      <div class="product-detail-media-stack" role="list">
+        {% for img in product_images[1:] %}
+        <button
+          type="button"
+          class="product-thumb-btn product-thumb-btn--stack"
+          data-full-src="{{ url_for('static', filename=img.path) }}"
+          aria-label="Show image {{ loop.index + 1 }} in hero"
+        >
+          <img src="{{ url_for('static', filename=img.path) }}" alt="" width="280" height="168" loading="lazy">
+        </button>
+        {% endfor %}
+      </div>
+      {% elif not product_images %}
+      <div class="product-detail-media-fallback">
+        <img
+          class="product-detail-thumb"
+          src="{{ url_for('static', filename='products/' ~ product.slug ~ '.svg') }}"
+          alt=""
+          width="400"
+          height="240"
+        >
+      </div>
+      {% endif %}
+
+      <div class="product-detail-intro">
+        <h1>{{ product.name }}</h1>
+        <p class="price"><span data-nzd-cents="{{ product.price_cents }}">{{ format_money(product.price_cents) }}</span> <span class="js-currency-suffix muted small">NZD</span></p>
+        {% set slug = (product.slug or '')|lower %}
+        {% if slug == 'melody' %}
+        <p class="product-system-hint muted small">Pairs with Harmony to create a mini soundwave.</p>
+        {% elif slug == 'harmony' %}
+        <p class="product-system-hint muted small">Pairs with Melody to create a mini soundwave.</p>
+        {% elif slug in ('riff', 'allegro') %}
+        <p class="product-system-hint muted small">Stack multiple pieces to expand your soundwave.</p>
+        {% endif %}
+        <div class="product-detail-prose" aria-label="About this product">
+          {% for para in product.description.split('\n\n') %}
+            {% set t = para.strip() %}
+            {% if t %}<p>{{ t }}</p>{% endif %}
+          {% endfor %}
+        </div>
+        {% if affiliate %}
+        <p class="notice small">Shopping via <strong>{{ affiliate.full_name or affiliate.affiliate_slug }}</strong>&apos;s Listening Room — your cart and checkout credit them.</p>
+        {% endif %}
+        {% if product.add_to_cart_enabled|default(1) %}
+        <form method="post" action="{{ url_for('cart_add') }}" class="inline-form product-detail-buy">
+          <input type="hidden" name="product_id" value="{{ product.id }}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="btn primary">Add to cart</button>
+          <a class="muted" href="{{ url_for('shop') }}">Back to shop</a>
+        </form>
+        {% else %}
+        <p class="muted">Currently not available for purchase online.</p>
+        <p><a class="btn" href="{{ url_for('shop') }}">Back to shop</a></p>
+        {% endif %}
+      </div>
+    </div>
+
+    <h2>Details</h2>
+    <dl class="spec-list">
+      <div class="spec-row">
+        <dt>Dimensions</dt>
+        <dd>
+          {% if product.width_cm is not none and product.height_cm is not none and product.depth_cm is not none %}
+          {{ product.width_cm|round(1) }} × {{ product.height_cm|round(1) }} × {{ product.depth_cm|round(1) }} cm <span class="muted small">(W × H × D)</span>
+          {% else %}
+          {{ product.dimensions or '—' }}
+          {% endif %}
+        </dd>
+      </div>
+      <div class="spec-row">
+        <dt>Materials</dt>
+        <dd>{{ product.materials or '—' }}</dd>
+      </div>
+      <div class="spec-row">
+        <dt>Capacity</dt>
+        <dd>
+          {% if product.capacity_records is not none %}
+          <strong>{{ product.capacity_records }}</strong> records
+          {% if product.capacity %}<span class="muted"> — {{ product.capacity }}</span>{% endif %}
+          {% else %}
+          {{ product.capacity or '—' }}
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+  </div>
+
+  {% if product_images and product_images|length > 1 %}
+  <script>
+  (function () {
+    var hero = document.getElementById("product-detail-hero-img");
+    if (!hero) return;
+    document.querySelectorAll(".product-detail-media-stack .product-thumb-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var src = btn.getAttribute("data-full-src");
+        if (src) hero.src = src;
+      });
+    });
+  })();
+  </script>
+  {% endif %}
+</article>
+{% endblock %}

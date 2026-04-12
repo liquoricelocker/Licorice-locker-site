@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — Licorice Locker{% endblock %}
+{% block body_class %}privacy-policy-page{% endblock %}
+{% block content %}
+<article class="info-doc" aria-labelledby="privacy-title">
+  <header class="info-doc-header">
+    <h1 id="privacy-title" class="info-doc-h1">Privacy Policy</h1>
+    <p class="info-doc-tagline">We design with intention — and we treat your data the same way.</p>
+    <p class="info-doc-meta muted">Last updated: 8 April 2026</p>
+  </header>
+
+  <p>At Licorice Locker, we respect your privacy.</p>
+  <p>This policy explains what we collect, how we use it, and what we don’t do with it.</p>
+
+  <section class="info-doc-section" aria-labelledby="privacy-collect">
+    <h2 id="privacy-collect" class="info-doc-h2">What we collect</h2>
+    <p>When you use our site, we may collect basic information such as:</p>
+    <ul class="info-doc-list">
+      <li>Your name</li>
+      <li>Email address</li>
+      <li>Shipping and billing details</li>
+      <li>Basic site usage data (e.g. pages visited)</li>
+    </ul>
+    <p>This information is only collected when necessary — for example, when you make a purchase or join The Listening Room.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-use">
+    <h2 id="privacy-use" class="info-doc-h2">How we use your information</h2>
+    <p>We use your information to:</p>
+    <ul class="info-doc-list">
+      <li>Process and deliver orders</li>
+      <li>Provide access to your Listening Room account</li>
+      <li>Track referrals, sales, and performance where applicable</li>
+      <li>Improve the experience of our website</li>
+    </ul>
+    <p>We only use your data in ways that directly support these functions.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-affiliate">
+    <h2 id="privacy-affiliate" class="info-doc-h2">Listening Room privacy</h2>
+    <p>If you join The Listening Room, your data remains private.</p>
+    <p>Other members do not have access to your personal information, sales data, or account details.</p>
+    <p>Each account is isolated and secure.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-dont">
+    <h2 id="privacy-dont" class="info-doc-h2">What we don’t do</h2>
+    <p>We do not sell, rent, or trade your personal data to third-party data brokers or advertisers.</p>
+    <p>Your information is not used for external marketing networks.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-third">
+    <h2 id="privacy-third" class="info-doc-h2">Third-party services</h2>
+    <p>We may use trusted third-party services (such as payment processors or analytics tools) to operate our website.</p>
+    <p>These services only receive the data required to perform their function and are expected to handle it securely.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-cookies">
+    <h2 id="privacy-cookies" class="info-doc-h2">Cookies</h2>
+    <p>We use cookies to:</p>
+    <ul class="info-doc-list">
+      <li>Track Listening Room referrals</li>
+      <li>Understand basic website behaviour</li>
+    </ul>
+    <p>These cookies help the site function properly and improve performance.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-security">
+    <h2 id="privacy-security" class="info-doc-h2">Security</h2>
+    <p>We take reasonable steps to protect your information and keep it secure.</p>
+    <p>However, no system is completely immune to risk, and we encourage users to take care with their own data as well.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-rights">
+    <h2 id="privacy-rights" class="info-doc-h2">Your rights</h2>
+    <p>You can request access to, correction of, or deletion of your personal data at any time.</p>
+    <p>To do so, contact us at: <a href="mailto:{{ footer_email }}" class="info-doc-link">{{ footer_email }}</a></p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-updates">
+    <h2 id="privacy-updates" class="info-doc-h2">Updates</h2>
+    <p>This policy may be updated occasionally to reflect changes to our services.</p>
+    <p>Any updates will be posted on this page.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="privacy-contact">
+    <h2 id="privacy-contact" class="info-doc-h2">Contact</h2>
+    <p>If you have any questions about this policy, you can reach us at:</p>
+    <p><a href="mailto:{{ footer_email }}" class="info-doc-link">{{ footer_email }}</a></p>
+  </section>
+</article>
+{% endblock %}

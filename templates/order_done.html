@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Order placed — Licorice Locker{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Thank you</h1>
+  <p>Your order <strong>{{ order_number }}</strong> is confirmed for {{ format_money(total) }}.</p>
+  {% if receipt_sent %}
+  <p class="muted">A confirmation email has been sent.</p>
+  {% else %}
+  <p class="muted">We could not send the confirmation email automatically. Our team has your order details and may contact you.</p>
+  {% endif %}
+  <a class="btn primary" href="{{ url_for('shop') }}">Keep shopping</a>
+</section>
+<script>
+(function () {
+  if (!window.LLAnalytics) return;
+  LLAnalytics.track('purchase', { order_number: {{ order_number|tojson }} });
+  LLAnalytics.convert();
+})();
+</script>
+{% endblock %}

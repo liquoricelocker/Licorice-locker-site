@@ -1,0 +1,390 @@
+{% extends "affiliate_base.html" %}
+{% block title %}Your Listening Room — Licorice Locker{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+{% endblock %}
+{% block affiliate_inner %}
+<section class="panel affiliate-dashboard-welcome">
+  <div class="affiliate-welcome-row">
+    {% if current_user.display_picture_url %}
+    <span class="affiliate-profile-pic-wrap">
+      <img
+        class="affiliate-profile-pic"
+        src="{{ affiliate_media_src(current_user.display_picture_url) }}"
+        alt=""
+        width="72"
+        height="72"
+        loading="lazy"
+      >
+    </span>
+    {% endif %}
+    <div>
+      <h1>Welcome{% if current_user.full_name %}, {{ current_user.full_name }}{% endif %}</h1>
+      <p class="muted" id="live-updated">Loading live stats…</p>
+    </div>
+  </div>
+</section>
+
+<section class="panel affiliate-resources">
+  <h2>Resources</h2>
+  <ul class="resource-list">
+    <li><a href="{{ url_for('affiliate_page_edit') }}">Edit display photo &amp; landing page</a></li>
+    {% if current_user.affiliate_code %}
+    <li><a href="{{ url_for('listening_room', code=current_user.affiliate_code) }}" target="_blank" rel="noopener noreferrer">Open my public Listening Room page</a> — share your Listening Room link to earn commissions.</li>
+    {% elif current_user.affiliate_slug %}
+    <li><a href="{{ url_for('affiliate_landing', slug=current_user.affiliate_slug) }}" target="_blank" rel="noopener noreferrer">Open my public Listening Room page</a> — share your Listening Room link to earn commissions.</li>
+    {% endif %}
+  </ul>
+</section>
+
+<section class="stats-grid" id="stat-cards">
+  <div class="stat-card">
+    <h2>Page visits (all time)</h2>
+    <p class="stat-big" id="affiliate-clicks">—</p>
+    <p class="muted small">Tracked when visitors land on your Listening Room link.</p>
+  </div>
+  <div class="stat-card">
+    <h2>Sales this month</h2>
+    <p class="stat-big" id="sales-month">—</p>
+  </div>
+  <div class="stat-card">
+    <h2>Revenue this month</h2>
+    <p class="stat-big" id="revenue-month">—</p>
+  </div>
+  <div class="stat-card">
+    <h2>Estimated payout (this month)</h2>
+    <p class="stat-big" id="commission-amt">—</p>
+    <p class="muted small" id="commission-rate"></p>
+    <p class="muted small" id="commission-bonus-line"></p>
+    <p class="muted small" id="tier-name"></p>
+  </div>
+  <div class="stat-card">
+    <h2>Lifetime earnings</h2>
+    <p class="stat-big" id="lifetime-earnings">—</p>
+    <p class="muted small">Recorded commissions plus milestone bonuses.</p>
+  </div>
+  <div class="stat-card">
+    <h2>Next payout</h2>
+    <p class="stat-big small" id="payout-date">—</p>
+    <p class="muted small">Paid around the 15th of the following month.</p>
+  </div>
+</section>
+
+<section class="panel creative-library-panel">
+  <h2>Creative library</h2>
+  <p class="muted small">Curated photos and videos from Licorice Locker for your social channels. Download and use in your posts.</p>
+  {% if creative_assets %}
+  <div class="creative-library-grid">
+    {% for a in creative_assets %}
+    <article class="creative-library-card">
+      <div class="creative-library-preview" data-type="{{ a['asset_type'] }}">
+        {% if a['asset_type'] == 'video' %}
+          {% if a['thumbnail_path'] %}
+          <img src="{{ url_for('static', filename=a['thumbnail_path']) }}" alt="" loading="lazy" decoding="async">
+          {% else %}
+          <video src="{{ url_for('static', filename=a['file_path']) }}" muted playsinline preload="metadata" aria-label="Video preview"></video>
+          {% endif %}
+        {% else %}
+          <img src="{{ url_for('static', filename=a['file_path']) }}" alt="" loading="lazy" decoding="async">
+        {% endif %}
+      </div>
+      {% if a['title'] %}
+      <h3 class="creative-library-card-title">{{ a['title'] }}</h3>
+      {% endif %}
+      {% if a['tags'] %}
+      <p class="creative-library-tags muted small">{{ a['tags'] }}</p>
+      {% endif %}
+      <a class="btn primary creative-library-download" href="{{ url_for('static', filename=a['file_path']) }}" download>Download</a>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No media in the library yet. Check back soon.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Tier progress (this month)</h2>
+  <div class="progress-wrap">
+    <div class="progress-bar" id="progress-bar" style="width: 0%;"></div>
+  </div>
+  <p class="muted" id="progress-label"></p>
+</section>
+
+<section class="panel">
+  <h2>Daily cumulative sales (this month)</h2>
+  <div class="chart-box">
+    <canvas id="chart-cumulative" height="120"></canvas>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Month-by-month</h2>
+  <div class="chart-box">
+    <canvas id="chart-monthly" height="120"></canvas>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Commission tiers (reset every calendar month)</h2>
+  <p class="muted small">Your <strong>Nth</strong> qualifying sale in the month earns that tier&rsquo;s rate. Earlier sales are not recalculated when you level up.</p>
+  <ul class="tier-list">
+    {% for t in tiers %}
+    <li><strong>{{ t.name }}</strong> — <strong>{{ (t.commission_rate * 100)|round(0)|int }}%</strong> on sales <strong>{{ t.min_sales }}–{% if t.max_sales is not none %}{{ t.max_sales }}{% else %}and up{% endif %}</strong> in that month.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="panel">
+  <h2>Example earnings per sale (NZD list price)</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Product</th><th>20%</th><th>25%</th><th>30%</th></tr>
+      </thead>
+      <tbody>
+        {% for name, row in earnings_display.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td>${{ '%.2f'|format(row['20%']) }}</td>
+          <td>${{ '%.2f'|format(row['25%']) }}</td>
+          <td>${{ '%.2f'|format(row['30%']) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">Milestone bonuses (paid with month-end commission): <strong>$100</strong> NZD at 10 sales and <strong>$300</strong> NZD at 25 sales in the same month (once each per milestone).</p>
+</section>
+
+<section class="panel">
+  <h2>Your orders this month</h2>
+  <div class="table-wrap">
+    <table class="data-table" id="orders-table">
+      <thead>
+        <tr>
+          <th>Reference</th>
+          <th>Amount</th>
+          <th>Customer</th>
+          <th>Date</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="muted" id="orders-empty" hidden>No Listening Room referral orders this month yet.</p>
+</section>
+
+<script>
+(function () {
+  const money = (cents) => '$' + (cents / 100).toFixed(2);
+  let chartCum, chartMo;
+
+  function buildCharts(data) {
+    const ctxC = document.getElementById('chart-cumulative');
+    const ctxM = document.getElementById('chart-monthly');
+    if (chartCum) chartCum.destroy();
+    if (chartMo) chartMo.destroy();
+    chartCum = new Chart(ctxC, {
+      type: 'line',
+      data: {
+        labels: data.cumulative.labels.map(d => 'Day ' + d),
+        datasets: [{
+          label: 'Cumulative revenue ($)',
+          data: data.cumulative.values,
+          borderColor: '#c4a7e7',
+          backgroundColor: 'rgba(196,167,231,0.15)',
+          fill: true,
+          tension: 0.25,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#e8e4f0' } } },
+        scales: {
+          x: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+          y: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        },
+      },
+    });
+    const m = data.monthly;
+    chartMo = new Chart(ctxM, {
+      type: 'bar',
+      data: {
+        labels: m.map(r => r.label),
+        datasets: [
+          {
+            label: 'Revenue ($)',
+            data: m.map(r => r.total_dollars),
+            backgroundColor: 'rgba(123, 212, 184, 0.55)',
+          },
+          {
+            label: 'Est. commission ($)',
+            data: m.map(r => r.commission_dollars),
+            backgroundColor: 'rgba(196, 167, 231, 0.55)',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#e8e4f0' } } },
+        scales: {
+          x: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+          y: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        },
+      },
+    });
+  }
+
+  async function refresh() {
+    const res = await fetch('{{ url_for("api_affiliate_stats") }}', { credentials: 'same-origin' });
+    if (res.status === 403) {
+      let msg = 'Accept The Listening Room terms and conditions to load live stats and commissions.';
+      try {
+        const err = await res.json();
+        if (err && err.message) msg = err.message;
+      } catch (e) {}
+      const live = document.getElementById('live-updated');
+      if (live) live.textContent = msg;
+      return;
+    }
+    if (!res.ok) return;
+    const data = await res.json();
+    document.getElementById('live-updated').textContent =
+      'Last updated: ' + new Date(data.updated_at).toLocaleString();
+    var clicksEl = document.getElementById('affiliate-clicks');
+    if (clicksEl) clicksEl.textContent = String(data.affiliate_clicks != null ? data.affiliate_clicks : '—');
+    document.getElementById('sales-month').textContent = String(data.sales_this_month);
+    document.getElementById('revenue-month').textContent = money(data.total_sales_cents);
+    document.getElementById('commission-amt').textContent = money(data.earnings_month_cents);
+    document.getElementById('commission-rate').textContent =
+      'Your next referral earns at ' + (data.commission_rate * 100).toFixed(0) + '%';
+    var bonusLine = document.getElementById('commission-bonus-line');
+    if (bonusLine) {
+      var bp = 'Sales commission ' + money(data.orders_commission_cents);
+      if (data.bonus_cents > 0) {
+        bp += ' · Milestone bonus ' + money(data.bonus_cents);
+      }
+      bonusLine.textContent = bp;
+    }
+    var tierEl = document.getElementById('tier-name');
+    if (tierEl) tierEl.textContent = data.tier_name ? ('Tier after latest sale: ' + data.tier_name) : '';
+    var life = document.getElementById('lifetime-earnings');
+    if (life) life.textContent = money(data.lifetime_earnings_cents != null ? data.lifetime_earnings_cents : 0);
+    document.getElementById('payout-date').textContent = data.payout_date;
+    const pct = Math.min(100, data.progress_pct);
+    const bar = document.getElementById('progress-bar');
+    bar.style.width = pct + '%';
+    var ng = data.next_tier_goal;
+    var pl = document.getElementById('progress-label');
+    if (pl) {
+      pl.textContent = ng != null
+        ? (pct.toFixed(1) + '% toward ' + ng + ' sales (next tier) · ' + data.sales_this_month + ' so far')
+        : ('Top tier pace — 30% on your next sale · ' + data.sales_this_month + ' sales this month');
+    }
+
+    const tbody = document.querySelector('#orders-table tbody');
+    tbody.innerHTML = '';
+    if (!data.orders.length) {
+      document.getElementById('orders-empty').hidden = false;
+    } else {
+      document.getElementById('orders-empty').hidden = true;
+      data.orders.forEach(o => {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td>' + o.order_number + '</td>' +
+          '<td>' + money(o.amount_cents) + '</td>' +
+          '<td>' + escapeHtml(o.customer) + '</td>' +
+          '<td>' + escapeHtml(o.created_at) + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+    buildCharts(data);
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+   refresh();
+  setInterval(refresh, 15000);
+})();
+</script>
+{% endblock %}
+
+{% block affiliate_footer %}
+<section class="panel danger-zone affiliate-account-delete" aria-labelledby="affiliate-delete-heading">
+  <h3 id="affiliate-delete-heading">Delete account</h3>
+  <p class="muted danger-zone-copy">This permanently removes your Listening Room affiliate account, including your profile, visit history, and commission records tied to this login.</p>
+  <p class="muted danger-zone-copy">This cannot be undone. Orders you referred stay in the system for fulfillment; they will no longer be linked to your account.</p>
+  {% if affiliate_pending_payout %}
+  <p class="affiliate-delete-pending-notice">You have pending commission on file. Eligible payouts for earnings already recorded are still processed on our usual schedule after your account is removed.</p>
+  {% endif %}
+  <button type="button" class="btn delete-btn" id="affiliate-delete-open">Delete my account</button>
+</section>
+
+<div id="affiliate-delete-modal" class="affiliate-modal affiliate-delete-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="affiliate-delete-modal-title">
+  <div class="affiliate-modal-backdrop" id="affiliate-delete-modal-backdrop" tabindex="-1"></div>
+  <div class="affiliate-modal-panel">
+    <button type="button" class="affiliate-modal-close" id="affiliate-delete-modal-close" aria-label="Close dialog">&times;</button>
+    <h2 id="affiliate-delete-modal-title" class="affiliate-modal-title">Remove your account</h2>
+    <p class="affiliate-modal-lede">You are about to permanently delete your affiliate login and the data we store for this program. Close this window if you prefer to keep your account.</p>
+    {% if affiliate_pending_payout %}
+    <p class="affiliate-delete-pending-notice">You have pending commission. Eligible amounts already recorded are still paid on the usual schedule where applicable.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('affiliate_delete_account') }}" class="affiliate-delete-form" id="affiliate-delete-form">
+      <label for="affiliate-delete-confirm">Type <strong>DELETE</strong> to confirm</label>
+      <input type="text" id="affiliate-delete-confirm" name="confirm_text" autocomplete="off" required>
+      <label for="affiliate-delete-password">Your password</label>
+      <input type="password" id="affiliate-delete-password" name="password" autocomplete="current-password" required>
+      <div class="affiliate-delete-actions">
+        <button type="button" class="btn" id="affiliate-delete-cancel">Cancel</button>
+        <button type="submit" class="btn delete-btn" id="affiliate-delete-submit">Permanently delete my account</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById("affiliate-delete-modal");
+  var openBtn = document.getElementById("affiliate-delete-open");
+  var closeBtn = document.getElementById("affiliate-delete-modal-close");
+  var backdrop = document.getElementById("affiliate-delete-modal-backdrop");
+  var cancelBtn = document.getElementById("affiliate-delete-cancel");
+  var form = document.getElementById("affiliate-delete-form");
+  if (!modal || !openBtn) return;
+  function setOpen(open) {
+    modal.setAttribute("aria-hidden", open ? "false" : "true");
+    document.body.classList.toggle("affiliate-modal-open", open);
+    if (open) {
+      var c = document.getElementById("affiliate-delete-confirm");
+      var p = document.getElementById("affiliate-delete-password");
+      if (c) c.value = "";
+      if (p) p.value = "";
+      if (c) c.focus();
+    }
+  }
+  openBtn.addEventListener("click", function () { setOpen(true); });
+  if (closeBtn) closeBtn.addEventListener("click", function () { setOpen(false); });
+  if (backdrop) backdrop.addEventListener("click", function () { setOpen(false); });
+  if (cancelBtn) cancelBtn.addEventListener("click", function () { setOpen(false); });
+  if (form) {
+    form.addEventListener("submit", function (ev) {
+      var t = document.getElementById("affiliate-delete-confirm");
+      var pw = document.getElementById("affiliate-delete-password");
+      if (!t || t.value.trim() !== "DELETE") {
+        ev.preventDefault();
+        return;
+      }
+      if (!pw || !pw.value) {
+        ev.preventDefault();
+      }
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal.getAttribute("aria-hidden") === "false") setOpen(false);
+  });
+})();
+</script>
+{% endblock %}

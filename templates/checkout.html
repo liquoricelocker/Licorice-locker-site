@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Checkout — Licorice Locker{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>Checkout</h1>
+  {% if affiliate %}
+  <p class="notice">You are shopping through <strong>{{ affiliate.full_name or affiliate.affiliate_slug }}</strong>&apos;s Listening Room. This order will credit their commission.</p>
+  {% else %}
+  <p class="muted">Direct order — no Listening Room referral cookie on this browser.</p>
+  {% endif %}
+
+  {% if not items %}
+  <p>Your cart is empty. <a href="{{ url_for('shop') }}">Continue shopping</a>.</p>
+  {% else %}
+  <p class="small"><a href="{{ url_for('cart_view') }}">Edit cart</a></p>
+  <ul class="cart-list checkout-line-items">
+    {% for it in items %}
+    <li class="checkout-line-item">
+      <div class="checkout-line-thumb">
+        {% set slug = it.product.slug %}
+        {% set banner = product_checkout_banner(slug) %}
+        {% if banner %}
+        <img
+          class="checkout-line-img"
+          src="{{ url_for('static', filename=banner) }}"
+          alt="{{ it.product.name }}"
+          width="80"
+          height="80"
+          loading="lazy"
+          decoding="async"
+        >
+        {% else %}
+        <img
+          class="checkout-line-img checkout-line-img--svg"
+          src="{{ url_for('static', filename='products/' ~ slug ~ '.svg') }}"
+          alt="{{ it.product.name }}"
+          width="80"
+          height="80"
+          loading="lazy"
+          decoding="async"
+        >
+        {% endif %}
+      </div>
+      <div class="checkout-line-main">
+        <span class="checkout-line-title">{{ it.product.name }} × {{ it.quantity }}</span>
+        <span class="checkout-line-price"><span data-nzd-cents="{{ it.line_cents }}">{{ format_money(it.line_cents) }}</span></span>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="total-line">
+    Subtotal: <strong><span data-nzd-cents="{{ total }}">{{ format_money(total) }}</span></strong>
+    · Shipping: <strong><span data-nzd-cents="{{ checkout_shipping_cents|default(0) }}">{{ format_money(checkout_shipping_cents|default(0)) }}</span></strong>
+    · Total: <strong><span data-nzd-cents="{{ total + (checkout_shipping_cents|default(0)) }}">{{ format_money(total + (checkout_shipping_cents|default(0))) }}</span></strong>
+  </p>
+  <p class="muted small ll-currency-disclaimer">Prices in USD or EUR are estimates. Final payment is processed in NZD.</p>
+  <p class="muted small">Shipping is included in the total above (set via site configuration).</p>
+
+  <h2>Shipping &amp; details</h2>
+  <form method="post" class="form-grid js-checkout-form">
+    <input type="hidden" name="shipping_cents" value="{{ checkout_shipping_cents }}">
+    <input type="hidden" name="payment_method" value="card">
+    <label>First name <input name="first_name" required autocomplete="given-name"></label>
+    <label>Last name <input name="last_name" required autocomplete="family-name"></label>
+    <label>Email <input type="email" name="email" required autocomplete="email"></label>
+    <label>Phone <span class="muted">(optional)</span>
+      <input type="tel" name="customer_phone" autocomplete="tel" placeholder="e.g. +64 …"></label>
+    <label class="full">Address line 1 <input name="shipping_line1" required autocomplete="address-line1"></label>
+    <label class="full">Address line 2 <input name="shipping_line2" autocomplete="address-line2"></label>
+    <label>City <input name="shipping_city" required autocomplete="address-level2"></label>
+    <label>Region / state <input name="shipping_region" autocomplete="address-level1"></label>
+    <label>Postal code <input name="shipping_postal" required autocomplete="postal-code"></label>
+    <label>Country <input name="shipping_country" value="NZ" autocomplete="country-name"></label>
+    <label class="full">Order notes (optional)
+      <textarea name="notes" rows="2" placeholder="Delivery instructions or special requests"></textarea>
+    </label>
+    <div class="full actions-row">
+      <button type="submit" class="btn primary js-checkout-submit">Place order</button>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

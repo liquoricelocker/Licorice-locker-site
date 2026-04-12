@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Orders — {{ affiliate_display_name }} — Admin{% endblock %}
+{% block content %}
+<div class="admin-order-page">
+  <p class="admin-order-back"><a href="{{ back_admin }}">← Admin dashboard</a></p>
+
+  <header class="admin-order-hero admin-aff-orders-hero">
+    <div class="admin-order-hero-main">
+      <p class="admin-order-eyebrow muted">Listening Room</p>
+      <h1 class="admin-order-title">All orders for {{ affiliate_display_name }}</h1>
+      <p class="admin-order-meta muted">
+        {% if affiliate.affiliate_code %}Code: <code>{{ affiliate.affiliate_code }}</code>{% endif %}
+        {% if affiliate.email %} · <a href="mailto:{{ affiliate.email }}">{{ affiliate.email }}</a>{% endif %}
+      </p>
+    </div>
+  </header>
+
+  <section class="admin-orders-command panel">
+    <div class="admin-orders-command-head">
+      <div class="admin-orders-command-title">
+        <h2 class="admin-orders-h1 admin-aff-orders-h2">Orders</h2>
+        <p class="muted admin-orders-sub">All referral orders for this member.</p>
+      </div>
+      <form method="get" action="{{ url_for('admin_affiliate_orders', code=affiliate.affiliate_code) }}" class="admin-orders-search-form" id="admin-aff-orders-search" role="search">
+        {% if dash_q %}<input type="hidden" name="dq" value="{{ dash_q }}">{% endif %}
+        {% if dash_sa %}<input type="hidden" name="dsa" value="{{ dash_sa }}">{% endif %}
+        <label class="sr-only" for="admin-aff-oq">Search orders</label>
+        <input
+          type="search"
+          id="admin-aff-oq"
+          name="oq"
+          class="admin-orders-search-input"
+          value="{{ oq }}"
+          placeholder="Search by customer name or order number"
+          autocomplete="off"
+        >
+      </form>
+    </div>
+
+    <div class="admin-orders-scroll" aria-label="Affiliate orders">
+      <table class="data-table admin-orders-table">
+        <thead>
+          <tr>
+            <th scope="col">Order</th>
+            <th scope="col">Date</th>
+            <th scope="col">Customer</th>
+            <th scope="col">Total</th>
+            <th scope="col">Commission</th>
+            <th scope="col">Fulfillment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in orders %}
+          <tr class="admin-order-row">
+            <td>
+              <a class="admin-order-number" href="{{ url_for('admin_order_detail_ref', order_number=o.order_number) }}">{{ o.order_number }}</a>
+            </td>
+            <td class="admin-order-date muted">{{ (o.created_at or '')[:16] }}</td>
+            <td>{{ o.customer_first }} {{ o.customer_last }}</td>
+            <td class="admin-order-total">{{ format_money(o.total_cents) }}</td>
+            <td>{{ format_money((o.affiliate_commission_cents or 0)|int) }}</td>
+            <td>
+              <form method="post" action="{{ url_for('admin_order_fulfillment', order_id=o.id) }}" class="admin-fulfillment-form">
+                <input type="hidden" name="return_to" value="affiliate">
+                <input type="hidden" name="affiliate_code" value="{{ affiliate.affiliate_code }}">
+                <input type="hidden" name="affiliate_list_q" value="{{ oq }}">
+                <input type="hidden" name="dash_q" value="{{ dash_q }}">
+                <input type="hidden" name="dash_sa" value="{{ dash_sa }}">
+                <label class="sr-only" for="fulfill-aff-{{ o.id }}">Fulfillment</label>
+                <select id="fulfill-aff-{{ o.id }}" name="fulfilled" class="admin-fulfillment-select" onchange="this.form.submit()">
+                  <option value="0" {% if (o.fulfillment_status or '') != 'shipped' %}selected{% endif %}>Unfulfilled</option>
+                  <option value="1" {% if (o.fulfillment_status or '') == 'shipped' %}selected{% endif %}>Fulfilled</option>
+                </select>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="admin-orders-empty">{% if oq %}No orders match your search.{% else %}No referral orders for this member yet.{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('admin-aff-orders-search');
+  var input = document.getElementById('admin-aff-oq');
+  if (!form || !input) return;
+  var t;
+  input.addEventListener('input', function () {
+    clearTimeout(t);
+    t = setTimeout(function () { form.submit(); }, 450);
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}{{ page.headline }} — Licorice Locker{% endblock %}
+{% block content %}
+<section class="top-banner" aria-label="Listening Room banner">
+  <img src="{{ listening_room_banner_url }}" alt="{{ page.headline }}">
+  <p class="top-banner-tagline">{{ page.headline }}</p>
+</section>
+
+<section class="shop-intro listening-room-intro" aria-label="About this Listening Room">
+  {% if page.tagline %}
+  <p class="shop-intro-text">{{ page.tagline }}</p>
+  {% endif %}
+  {% if page.description %}
+  <p class="shop-intro-text">{{ page.description }}</p>
+  {% endif %}
+  {% if page.instagram_url or page.tiktok_url %}
+  <div class="listening-room-social">
+    {% if page.instagram_url %}<a href="{{ page.instagram_url }}" target="_blank" rel="noopener">Instagram</a>{% endif %}
+    {% if page.tiktok_url %}<a href="{{ page.tiktok_url }}" target="_blank" rel="noopener">TikTok</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
+
+{% if sound_wave_product %}
+<section class="soundwave-showcase" aria-label="Sound Wave product">
+  <div class="soundwave-showcase-inner">
+    <a class="soundwave-banner-link" href="{{ url_for('product_detail', slug='sound-wave') }}">
+      <img
+        class="soundwave-banner-img"
+        src="{{ url_for('static', filename='sound-wave-feature-01.png') }}"
+        alt="Sound Wave — sculptural clear acrylic vinyl display in a wave formation"
+        width="1600"
+        height="900"
+      >
+    </a>
+    <div class="soundwave-below">
+      <h2 class="soundwave-title">Sound Wave</h2>
+      <p class="soundwave-price"><span data-nzd-cents="{{ sound_wave_product.price_cents }}">{{ format_money(sound_wave_product.price_cents) }}</span></p>
+      {% if sound_wave_product.add_to_cart_enabled|default(1) %}
+      <form method="post" action="{{ url_for('cart_add') }}" class="soundwave-add-form js-shop-add-cart">
+        <input type="hidden" name="product_id" value="{{ sound_wave_product.id }}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit" class="soundwave-add-btn">
+          <span class="soundwave-add-btn-text">
+            <span class="soundwave-add-line">Add to</span>
+            <span class="soundwave-add-line">cart</span>
+          </span>
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if riff_product %}
+<section class="riff-showcase" aria-label="Riff product">
+  <div class="riff-showcase-inner">
+    <div class="riff-column">
+      <div class="riff-visual">
+        <a class="riff-banner-link" href="{{ url_for('product_detail', slug='riff') }}">
+          <img
+            class="riff-banner-img"
+            src="{{ url_for('static', filename='riff-feature-01.png') }}"
+            alt="Riff — compact clear acrylic vinyl display with turntable in a minimalist room"
+            width="800"
+            height="1200"
+          >
+        </a>
+      </div>
+      <div class="riff-below">
+        <h2 class="riff-title">Riff</h2>
+        <p class="riff-price">{{ format_money(riff_product.price_cents) }}</p>
+        {% if riff_product.add_to_cart_enabled|default(1) %}
+        <form method="post" action="{{ url_for('cart_add') }}" class="riff-add-form js-shop-add-cart">
+          <input type="hidden" name="product_id" value="{{ riff_product.id }}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="riff-add-btn">
+            <span class="riff-add-btn-text">
+              <span class="riff-add-line">Add to</span>
+              <span class="riff-add-line">cart</span>
+            </span>
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if harmony_product %}
+<section class="harmony-showcase" aria-label="Harmony product">
+  <div class="harmony-showcase-inner">
+    <div class="harmony-column">
+      <div class="harmony-visual">
+        <a class="harmony-banner-link" href="{{ url_for('product_detail', slug='harmony') }}">
+          <img
+            class="harmony-banner-img"
+            src="{{ url_for('static', filename='harmony-feature-01.png') }}"
+            alt="Harmony — clear acrylic vinyl display with turntable in a minimalist room"
+            width="800"
+            height="1200"
+          >
+        </a>
+      </div>
+      <div class="harmony-below">
+        <h2 class="harmony-title">Harmony</h2>
+        <p class="harmony-price"><span data-nzd-cents="{{ harmony_product.price_cents }}">{{ format_money(harmony_product.price_cents) }}</span></p>
+        {% if harmony_product.add_to_cart_enabled|default(1) %}
+        <form method="post" action="{{ url_for('cart_add') }}" class="harmony-add-form js-shop-add-cart">
+          <input type="hidden" name="product_id" value="{{ harmony_product.id }}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="harmony-add-btn">
+            <span class="harmony-add-btn-text">
+              <span class="harmony-add-line">Add to</span>
+              <span class="harmony-add-line">cart</span>
+            </span>
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if melody_product %}
+<section class="melody-showcase" aria-label="Melody product">
+  <div class="melody-showcase-inner">
+    <div class="melody-column">
+      <div class="melody-visual">
+        <a class="melody-banner-link" href="{{ url_for('product_detail', slug='melody') }}">
+          <img
+            class="melody-banner-img"
+            src="{{ url_for('static', filename='melody-feature-01.png') }}"
+            alt="Melody — clear acrylic vinyl display with turntable in a minimalist room"
+            width="1200"
+            height="800"
+          >
+        </a>
+      </div>
+      <div class="melody-below">
+        <h2 class="melody-title">Melody</h2>
+        <p class="melody-price"><span data-nzd-cents="{{ melody_product.price_cents }}">{{ format_money(melody_product.price_cents) }}</span></p>
+        {% if melody_product.add_to_cart_enabled|default(1) %}
+        <form method="post" action="{{ url_for('cart_add') }}" class="melody-add-form js-shop-add-cart">
+          <input type="hidden" name="product_id" value="{{ melody_product.id }}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="melody-add-btn">
+            <span class="melody-add-btn-text">
+              <span class="melody-add-line">Add to</span>
+              <span class="melody-add-line">cart</span>
+            </span>
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if allegro_product %}
+<section class="allegro-showcase" aria-label="Allegra product">
+  <div class="allegro-showcase-inner">
+    <div class="allegro-column">
+      <div class="allegro-visual">
+        <a class="allegro-banner-link" href="{{ url_for('product_detail', slug='allegro') }}">
+          <img
+            class="allegro-banner-img"
+            src="{{ url_for('static', filename='allegra-feature-01.png') }}"
+            alt="Allegra — clear acrylic vinyl display with turntable in a minimalist room"
+            width="800"
+            height="1200"
+          >
+        </a>
+      </div>
+      <div class="allegro-below">
+        <h2 class="allegro-title">Allegra</h2>
+        <p class="allegro-price"><span data-nzd-cents="{{ allegro_product.price_cents }}">{{ format_money(allegro_product.price_cents) }}</span></p>
+        {% if allegro_product.add_to_cart_enabled|default(1) %}
+        <form method="post" action="{{ url_for('cart_add') }}" class="allegro-add-form js-shop-add-cart">
+          <input type="hidden" name="product_id" value="{{ allegro_product.id }}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="allegro-add-btn">
+            <span class="allegro-add-btn-text">
+              <span class="allegro-add-line">Add to</span>
+              <span class="allegro-add-line">cart</span>
+            </span>
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<div class="product-grid">
+  {% for p in products %}
+  {% if p.slug != 'sound-wave' and p.slug != 'riff' and p.slug != 'harmony' and p.slug != 'melody' and p.slug != 'allegro' %}
+  <article class="product-card {% if p.is_main %}product-main{% endif %}">
+    {% if p.is_main %}<span class="badge">Main</span>{% endif %}
+    <h2><a class="product-card-title-link" href="{{ url_for('product_detail', slug=p.slug) }}">{{ p.name }}</a></h2>
+    <p class="price"><span data-nzd-cents="{{ p.price_cents }}">{{ format_money(p.price_cents) }}</span></p>
+    {% set _desc = p.description or '' %}
+    <p class="desc">{{ _desc.split('\n\n')[0] if '\n\n' in _desc else _desc }}</p>
+    {% if p.add_to_cart_enabled|default(1) %}
+    <form method="post" action="{{ url_for('cart_add') }}" class="inline-form js-shop-add-cart">
+      <input type="hidden" name="product_id" value="{{ p.id }}">
+      <label class="sr-only" for="qty-{{ p.id }}">Quantity</label>
+      <input id="qty-{{ p.id }}" type="number" name="quantity" value="1" min="1" class="qty">
+      <button type="submit" class="btn primary">Add to cart</button>
+    </form>
+    {% endif %}
+  </article>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

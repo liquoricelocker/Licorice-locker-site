@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ page.headline }} — Licorice Locker{% endblock %}
+{% block body_class %}affiliate-landing{% endblock %}
+{% block content %}
+<div class="aff-banner" {% if page.banner_image_url %}style="background-image: linear-gradient(120deg, rgba(18,16,28,0.92), rgba(40,32,64,0.75)), url('{{ affiliate_media_src(page.banner_image_url) }}');"{% endif %}>
+  <div class="aff-banner-inner">
+    <p class="eyebrow">The Listening Room</p>
+    <h1>{{ page.headline }}</h1>
+    <p class="tagline">{{ page.tagline }}</p>
+    <div class="social-links">
+      {% if page.instagram_url %}<a href="{{ page.instagram_url }}" target="_blank" rel="noopener">Instagram</a>{% endif %}
+      {% if page.tiktok_url %}<a href="{{ page.tiktok_url }}" target="_blank" rel="noopener">TikTok</a>{% endif %}
+    </div>
+  </div>
+</div>
+
+<section class="panel">
+  <p class="lede">{{ page.description }}</p>
+  <p class="muted small">A tracking cookie was set so purchases from this device credit this member&apos;s Listening Room.</p>
+</section>
+
+<section class="hero">
+  <h2>Products</h2>
+  <p class="muted">Catalog is fixed — members cannot change names, prices, or features.</p>
+</section>
+
+<div class="product-grid">
+  {% for p in products %}
+  <article class="product-card {% if p.is_main %}product-main{% endif %}">
+    {% if p.is_main %}<span class="badge">Main — Sound Wave</span>{% endif %}
+    <h3><a class="product-card-title-link" href="{{ url_for('product_detail', slug=p.slug) }}">{{ p.name }}</a></h3>
+    <p class="price"><span data-nzd-cents="{{ p.price_cents }}">{{ format_money(p.price_cents) }}</span></p>
+    {% set _desc = p.description or '' %}
+    <p class="desc">{{ _desc.split('\n\n')[0] if '\n\n' in _desc else _desc }}</p>
+    {% if p.add_to_cart_enabled|default(1) %}
+    <form method="post" action="{{ url_for('cart_add') }}" class="inline-form">
+      <input type="hidden" name="product_id" value="{{ p.id }}">
+      <input type="hidden" name="quantity" value="1">
+      <button type="submit" class="btn primary">Add to cart</button>
+    </form>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+
+<div class="panel actions-row">
+  <a class="btn primary" href="{{ url_for('cart_view') }}">View cart</a>
+</div>
+{% endblock %}

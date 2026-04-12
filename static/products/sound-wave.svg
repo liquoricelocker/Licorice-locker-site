@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120" viewBox="0 0 200 120" role="img" aria-labelledby="t">
+  <title id="t">Sound Wave</title>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6d4cff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b8a8ff;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="200" height="120" rx="14" fill="url(#g)"/>
+  <text x="100" y="58" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif" font-size="13" font-weight="700">SOUND WAVE</text>
+  <text x="100" y="80" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-family="system-ui,sans-serif" font-size="10">Flagship</text>
+</svg>

@@ -1,0 +1,173 @@
+{% extends "affiliate_base.html" %}
+{% block title %}Customize my page — Licorice Locker{% endblock %}
+{% block affiliate_inner %}
+<section class="panel">
+  <h1>Your Listening Room page</h1>
+  <p class="muted">Share this link — visitors get a tracking cookie so checkout credits you.</p>
+  <p class="public-url"><a href="{{ public_url }}">{{ public_url }}</a></p>
+</section>
+
+<section class="panel {% if not current_user.terms_accepted %}affiliate-page-locked{% endif %}">
+  <h2>Profile &amp; landing page</h2>
+  <form method="post" class="form-stack" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="update">
+    <fieldset class="affiliate-edit-fieldset" {% if not current_user.terms_accepted %}disabled aria-disabled="true"{% endif %}>
+      <div class="affiliate-display-photo-block">
+        <p class="affiliate-field-label">Display picture</p>
+        <div class="affiliate-avatar-preview-row">
+          <span class="affiliate-avatar-preview-wrap">
+            {% if display_picture_url %}
+            <img
+              class="affiliate-avatar-preview"
+              src="{{ affiliate_media_src(display_picture_url) }}"
+              alt=""
+              width="96"
+              height="96"
+            >
+            {% else %}
+            <span class="affiliate-avatar-placeholder">No photo yet</span>
+            {% endif %}
+          </span>
+          <div class="affiliate-avatar-upload">
+            <label class="btn affiliate-file-label">
+              Upload image
+              <input type="file" name="display_picture" accept="image/jpeg,image/png,image/webp,image/gif" class="sr-only">
+            </label>
+            <p class="muted small">JPEG, PNG, WebP, or GIF — max 3&nbsp;MB. Shown in a circle on the dashboard; the image fills the frame (cover) without stretching.</p>
+          </div>
+        </div>
+        <label>Or paste an image URL
+          <input
+            name="display_picture_url"
+            type="url"
+            value="{% if display_picture_url and (display_picture_url.startswith('http://') or display_picture_url.startswith('https://')) %}{{ display_picture_url }}{% endif %}"
+            placeholder="https://…"
+          >
+        </label>
+        {% if display_picture_url %}
+        <label class="checkbox-label">
+          <input type="checkbox" name="clear_display_picture" value="1">
+          Remove display picture
+        </label>
+        {% endif %}
+        <p class="muted small">Upload replaces any previous photo. Leave the URL blank to keep your current picture (uploaded or linked).</p>
+      </div>
+      <label>Banner call to action (main headline)
+        <input name="headline" value="{{ page.headline }}" required maxlength="200">
+      </label>
+      <label>Banner subtitle
+        <input name="tagline" value="{{ page.tagline }}" maxlength="300">
+      </label>
+      <label>Landing bio
+        <textarea name="description" rows="5" maxlength="2000">{{ page.description }}</textarea>
+      </label>
+      <div class="affiliate-banner-block">
+        <p class="affiliate-field-label">Banner image</p>
+        <div class="affiliate-banner-preview-row">
+          <div class="affiliate-banner-preview-wrap" id="affiliate-banner-preview-wrap">
+            {% if page.banner_image_url %}
+            <img
+              class="affiliate-banner-preview"
+              id="affiliate-banner-preview-img"
+              src="{{ affiliate_media_src(page.banner_image_url) }}"
+              alt=""
+              width="320"
+              height="180"
+              loading="lazy"
+              decoding="async"
+            >
+            {% else %}
+            <span class="affiliate-banner-placeholder" id="affiliate-banner-placeholder">No banner yet — the default shop image is used on your Listening Room.</span>
+            {% endif %}
+          </div>
+          <div class="affiliate-banner-upload">
+            <label class="btn affiliate-file-label">
+              Upload image
+              <input type="file" name="banner_image" accept="image/jpeg,image/png,image/webp,image/gif" class="sr-only">
+            </label>
+            <p class="muted small">JPEG, PNG, WebP, or GIF — max 8&nbsp;MB. Shown full width at the top of your Listening Room.</p>
+          </div>
+        </div>
+        <label>Or paste an image URL
+          <input
+            name="banner_image_url"
+            type="url"
+            value="{% if page.banner_image_url and (page.banner_image_url.startswith('http://') or page.banner_image_url.startswith('https://')) %}{{ page.banner_image_url }}{% endif %}"
+            placeholder="https://…"
+          >
+        </label>
+        {% if page.banner_image_url %}
+        <label class="checkbox-label">
+          <input type="checkbox" name="clear_banner_image" value="1">
+          Remove banner (use default shop image)
+        </label>
+        {% endif %}
+        <p class="muted small">Upload replaces a previous upload. Leave the URL blank to keep your current banner (uploaded or linked).</p>
+      </div>
+      <label>Instagram URL
+        <input name="instagram_url" type="url" value="{{ page.instagram_url }}" placeholder="https://instagram.com/…">
+      </label>
+      <label>TikTok URL
+        <input name="tiktok_url" type="url" value="{{ page.tiktok_url }}" placeholder="https://tiktok.com/…">
+      </label>
+      <button type="submit" class="btn primary">Update</button>
+    </fieldset>
+  </form>
+  {% if not current_user.terms_accepted %}
+  <p class="muted small">Agree to The Listening Room terms (see the Terms and conditions section above) to enable these fields.</p>
+  {% endif %}
+</section>
+<script>
+(function () {
+  var input = document.querySelector('input[name="display_picture"]');
+  var wrap = document.querySelector('.affiliate-avatar-preview-wrap');
+  if (input && wrap) {
+    input.addEventListener('change', function () {
+      var f = input.files && input.files[0];
+      if (!f || !/^image\//.test(f.type)) return;
+      var url = URL.createObjectURL(f);
+      var img = wrap.querySelector('.affiliate-avatar-preview');
+      if (img) {
+        img.src = url;
+      } else {
+        var ph = wrap.querySelector('.affiliate-avatar-placeholder');
+        if (ph) ph.remove();
+        img = document.createElement('img');
+        img.className = 'affiliate-avatar-preview';
+        img.width = 96;
+        img.height = 96;
+        img.alt = '';
+        img.src = url;
+        wrap.appendChild(img);
+      }
+    });
+  }
+
+  var binput = document.querySelector('input[name="banner_image"]');
+  var bwrap = document.getElementById('affiliate-banner-preview-wrap');
+  if (binput && bwrap) {
+    binput.addEventListener('change', function () {
+      var f = binput.files && binput.files[0];
+      if (!f || !/^image\//.test(f.type)) return;
+      var url = URL.createObjectURL(f);
+      var img = document.getElementById('affiliate-banner-preview-img');
+      var ph = document.getElementById('affiliate-banner-placeholder');
+      if (ph) ph.remove();
+      if (img) {
+        img.src = url;
+      } else {
+        img = document.createElement('img');
+        img.className = 'affiliate-banner-preview';
+        img.id = 'affiliate-banner-preview-img';
+        img.width = 320;
+        img.height = 180;
+        img.alt = '';
+        img.src = url;
+        img.setAttribute('decoding', 'async');
+        bwrap.appendChild(img);
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

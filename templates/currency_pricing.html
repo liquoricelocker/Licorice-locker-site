@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Currency &amp; International Pricing — Licorice Locker{% endblock %}
+{% block body_class %}currency-pricing-page{% endblock %}
+{% block content %}
+<article class="info-doc" aria-labelledby="currency-title">
+  <header class="info-doc-header">
+    <h1 id="currency-title" class="info-doc-h1">Currency &amp; international pricing</h1>
+    <p class="info-doc-tagline">We display local pricing where possible, while processing securely in NZD.</p>
+    <p class="info-doc-meta muted">Guide rates reflect approximate market levels; they change every business day.</p>
+  </header>
+
+  <p>All prices on our website are listed in <strong>New Zealand Dollars (NZD)</strong>.</p>
+
+  <section class="info-doc-section" aria-labelledby="currency-auto">
+    <h2 id="currency-auto" class="info-doc-h2">Automatic conversion</h2>
+    <p>For international customers, prices may be displayed in your local currency (such as USD or EUR) for convenience.</p>
+    <p>This conversion is based on current exchange rates, which we update regularly. Rates move with global markets, so any converted amount is an <strong>estimate</strong>, not a locked price in that currency.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="currency-rates">
+    <h2 id="currency-rates" class="info-doc-h2">Exchange rates</h2>
+    <p>Exchange rates fluctuate daily based on global currency markets.</p>
+    <p>As a general guide (approximate, for shopping context only):</p>
+    <ul class="info-doc-list">
+      <li>1 NZD &approx; 0.58 USD</li>
+      <li>1 NZD &approx; 0.497 EUR</li>
+    </ul>
+    <p>Please note that these are <strong>approximate</strong> rates and may vary slightly at the time of purchase.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="currency-final">
+    <h2 id="currency-final" class="info-doc-h2">Final payment amount</h2>
+    <p>All transactions are processed in <strong>NZD</strong>.</p>
+    <p>Your bank or payment provider will convert the amount into your local currency at <strong>their</strong> exchange rate at settlement time.</p>
+    <p>This means the final amount charged may differ slightly from the displayed estimate.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="currency-fees">
+    <h2 id="currency-fees" class="info-doc-h2">Additional fees</h2>
+    <p>Some banks or payment providers may apply international transaction or currency conversion fees.</p>
+    <p>These fees are not controlled by Licorice Locker.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="currency-transparency">
+    <h2 id="currency-transparency" class="info-doc-h2">Transparency</h2>
+    <p>We aim to provide clear and accurate pricing for all customers.</p>
+    <p>If you have any questions about currency or pricing, contact us at <a href="mailto:{{ footer_email }}" class="info-doc-link">{{ footer_email }}</a>.</p>
+  </section>
+</article>
+{% endblock %}

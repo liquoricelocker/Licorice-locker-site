@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}The Listening Room — Licorice Locker{% endblock %}
+{% block body_class %}listening-room-program{% endblock %}
+{% block content %}
+
+<!-- HERO — hook (money + identity) -->
+<section class="lr-hero" aria-labelledby="lr-hero-title">
+  <div class="lr-hero-inner">
+    <p class="lr-eyebrow">Licorice Locker · The Listening Room</p>
+    <h1 id="lr-hero-title" class="lr-display">Earn up to $128 per sale</h1>
+    <p class="lr-lede lr-lede--tight">You already have taste.</p>
+    <p class="lr-lede lr-lede--tight">Now turn it into income.</p>
+    <div class="lr-hero-cta">
+      <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+      <a class="btn lr-btn-ghost" href="#lr-visual">Keep scrolling</a>
+    </div>
+  </div>
+</section>
+
+<!-- VISUAL — space for scroll / record interaction -->
+<section class="lr-section lr-section--visual" id="lr-visual" aria-label="Visual">
+  <div class="lr-section-inner lr-visual-inner">
+    <div class="lr-visual-stage" aria-hidden="true"></div>
+    <p class="lr-prose lr-prose--center muted">Built for creators, designers, and music lovers.</p>
+  </div>
+</section>
+
+<section class="lr-section lr-section--belong" aria-labelledby="lr-belong-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-belong-title" class="lr-heading">You’re already on repeat</h2>
+    <p class="lr-prose">
+      The Listening Room is for <strong>tastemakers</strong> — the ones curating shelves, lighting, and sound.
+      You spin records. You chase pressings. You care how a room <em>feels</em> when the stylus lands.
+      We build objects that belong in that world: minimal, sculptural, honest — so the music stays centre stage.
+    </p>
+    <p class="lr-prose muted">
+      Side A: love of vinyl. Side B: eye for design. If that’s you, you’re not pushing product — you’re <strong>putting people onto something you genuinely rate</strong>.
+    </p>
+    <p class="lr-section-cta">
+      <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+    </p>
+  </div>
+</section>
+
+<section class="lr-section lr-section--opportunity" aria-labelledby="lr-opp-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-opp-title" class="lr-heading">Play your part</h2>
+    <p class="lr-prose">
+      When your crowd trusts your taste, sharing Licorice Locker is natural — a recommendation, a story, a post that doesn’t read like an ad.
+      You keep doing what you do: <strong>curate your collection</strong>, show your space, <strong>drop the needle</strong> on what matters.
+      We handle fulfilment and care for collectors end to end. You stay in the culture, not in the weeds.
+    </p>
+    <p class="lr-section-cta">
+      <a class="btn lr-btn-ghost" href="#lr-value">Next</a>
+    </p>
+  </div>
+</section>
+
+<!-- VALUE PROPOSITION -->
+<section class="lr-section lr-section--value" id="lr-value" aria-labelledby="lr-value-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-value-title" class="lr-heading">Post. Earn. Repeat.</h2>
+    <ul class="lr-punch-list">
+      <li>No inventory</li>
+      <li>No customer service</li>
+      <li>We handle everything</li>
+    </ul>
+    <p class="lr-section-cta">
+      <a class="btn primary lr-btn-primary" href="#lr-commission">See the numbers</a>
+    </p>
+  </div>
+</section>
+
+<!-- COMMISSION CLARITY -->
+<section class="lr-section lr-section--commission" id="lr-commission" aria-labelledby="lr-commission-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-commission-title" class="lr-heading">Start strong. Scale fast.</h2>
+    <p class="lr-prose lr-prose--tight">20% from your first sale in a month</p>
+    <p class="lr-prose lr-prose--tight">25% at 10 sales in a month</p>
+    <p class="lr-prose lr-prose--tight">30% at 25 sales in a month</p>
+    <p class="lr-prose"><strong>Top partners earn up to $128 per sale</strong> (Sound Wave at top tier).</p>
+    <p class="lr-section-cta">
+      <a class="btn primary lr-btn-primary" href="#play-your-part">Try the calculator</a>
+    </p>
+  </div>
+</section>
+
+<!-- CALCULATOR -->
+<section class="lr-section lr-section--calc" id="play-your-part" aria-labelledby="lr-calc-title">
+  <div class="lr-section-inner lr-calc-layout">
+    <div class="lr-calc-copy">
+      <h2 id="lr-calc-title" class="lr-heading">How many spins this month?</h2>
+      <p class="lr-prose">
+        Every qualifying sale in a calendar month has a place in the queue — like tracks on a record.
+        Early spins earn <strong>20%</strong>, then the room opens up: <strong>25%</strong> from the 10th spin, <strong>30%</strong> from the 25th.
+        There are also <strong>room bonuses</strong> when you hit 10 and 25 spins in the same month — because momentum should feel real.
+      </p>
+      <p class="lr-prose muted small">
+        Figures are estimates in NZD using list prices; your mix of Sound Wave and Mini Series pieces will vary.
+        That’s just a few posts, a couple of DMs, one honest story — <strong>on repeat</strong>.
+      </p>
+      <p class="lr-section-cta">
+        <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+      </p>
+    </div>
+    <div
+      class="lr-calc-panel"
+      id="lr-calc-root"
+      data-soundwave-cents="{{ soundwave_cents }}"
+      data-mini-cents="{{ mini_cents }}"
+    >
+      <p class="lr-calc-label" id="lr-calc-spins-label">0 spins this month</p>
+      <div class="lr-calc-output" aria-live="polite">
+        <span class="lr-calc-currency">NZD</span>
+        <span class="lr-calc-total" id="lr-calc-total">$0.00</span>
+      </div>
+      <label class="lr-calc-slider-label" for="lr-calc-slider">
+        <span>Spins (sales) this month</span>
+        <span class="lr-calc-slider-value-wrap">
+          <input type="number" class="lr-calc-number" id="lr-calc-input" min="0" max="100" value="5" inputmode="numeric">
+        </span>
+      </label>
+      <input type="range" class="lr-calc-slider" id="lr-calc-slider" min="0" max="50" value="5" step="1" aria-valuemin="0" aria-valuemax="50">
+      <fieldset class="lr-calc-modes">
+        <legend class="sr-only">What are you mostly moving?</legend>
+        <label class="lr-calc-mode">
+          <input type="radio" name="lr-product-mode" value="soundwave" checked>
+          <span>Sound Wave</span>
+        </label>
+        <label class="lr-calc-mode">
+          <input type="radio" name="lr-product-mode" value="mini">
+          <span>Mini series</span>
+        </label>
+        <label class="lr-calc-mode">
+          <input type="radio" name="lr-product-mode" value="mix">
+          <span>50 / 50 mix</span>
+        </label>
+      </fieldset>
+      <div class="lr-calc-detail muted small" id="lr-calc-detail"></div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="lr-section lr-section--how" aria-labelledby="lr-how-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-how-title" class="lr-heading">How it works</h2>
+    <ol class="lr-steps-list">
+      <li>Sign up</li>
+      <li>Get your link + content</li>
+      <li>Post and earn</li>
+    </ol>
+    <p class="lr-section-cta">
+      <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+    </p>
+  </div>
+</section>
+
+<!-- IDENTITY -->
+<section class="lr-section lr-section--for-you" aria-labelledby="lr-foryou-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-foryou-title" class="lr-heading">This is for you if:</h2>
+    <ul class="lr-punch-list">
+      <li>You care about how things look</li>
+      <li>You already share music, interiors, or design</li>
+      <li>You want your content to do more</li>
+    </ul>
+    <p class="lr-section-cta">
+      <a class="btn lr-btn-ghost" href="#lr-content">Content</a>
+    </p>
+  </div>
+</section>
+
+<!-- CONTENT HOOK -->
+<section class="lr-section lr-section--content" id="lr-content" aria-labelledby="lr-content-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-content-title" class="lr-heading">Content you’ll actually want to post</h2>
+    <p class="lr-prose">We give you high-quality visuals designed to elevate your page — not clutter it.</p>
+    <p class="lr-prose"><strong>Download. Post. Done.</strong></p>
+    <p class="lr-section-cta">
+      <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+    </p>
+  </div>
+</section>
+
+<!-- MOMENTUM -->
+<section class="lr-section lr-section--scale" aria-labelledby="lr-scale-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-scale-title" class="lr-heading">Built to scale</h2>
+    <p class="lr-prose lr-prose--tight">Start earning from your first post.</p>
+    <p class="lr-prose lr-prose--tight">Grow as you go.</p>
+    <p class="lr-section-cta">
+      <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+    </p>
+  </div>
+</section>
+
+<section class="lr-section lr-section--future" aria-labelledby="lr-future-title">
+  <div class="lr-section-inner">
+    <h2 id="lr-future-title" class="lr-heading">This isn’t one drop — it’s a growing catalogue</h2>
+    <p class="lr-prose">
+      More pieces are in the works — same obsession with creativity, detail, and respect for the vinyl community.
+      When you’re in The Listening Room, you’re not chasing a single SKU; you’re aligned with a line that keeps turning out <strong>deep cuts</strong> for people who get it.
+    </p>
+    <p class="lr-section-cta">
+      <a class="btn lr-btn-ghost" href="{{ shop_url }}">Browse the catalogue</a>
+    </p>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="lr-section lr-section--closer" aria-labelledby="lr-closer-title">
+  <div class="lr-section-inner lr-closer-inner">
+    <h2 id="lr-closer-title" class="lr-display lr-display--sm">Start earning from your aesthetic</h2>
+    <p class="lr-prose lr-closer-lede">
+      <strong>Join The Listening Room</strong> — same signup, no fluff.
+    </p>
+    <div class="lr-hero-cta lr-hero-cta--center">
+      <a class="btn primary lr-btn-primary" href="{{ signup_url }}">Start earning</a>
+      <a class="btn lr-btn-ghost" href="{{ shop_url }}">Shop first</a>
+    </div>
+  </div>
+</section>
+
+<script src="{{ url_for('static', filename='listening_room_program.js') }}" defer></script>
+{% endblock %}

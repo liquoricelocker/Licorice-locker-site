@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}Licorice Locker{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% if analytics_public %}
+  <script>
+  try {
+    if (localStorage.getItem("ll_cookie_banner") === "1") {
+      document.documentElement.classList.add("cookie-banner-dismissed");
+    }
+  } catch (e) {}
+  </script>
+  {% endif %}
+  <div class="header-wrap">
+    <header class="site-header">
+      <div class="header-left">
+        {% if not user_is_effective_admin() %}
+        <div class="currency-switcher" id="currency-switcher">
+          <button
+            type="button"
+            class="currency-switcher-btn"
+            id="currency-switcher-btn"
+            aria-expanded="false"
+            aria-haspopup="listbox"
+            aria-controls="currency-switcher-menu"
+            title="Display currency (checkout in NZD)"
+          >
+            <span class="currency-switcher-label" aria-hidden="true">NZ$</span>
+            <span class="sr-only">Choose display currency</span>
+          </button>
+          <div
+            id="currency-switcher-menu"
+            class="currency-switcher-menu"
+            role="listbox"
+            aria-labelledby="currency-switcher-btn"
+            hidden
+          >
+            <button type="button" class="currency-switcher-option" role="option" data-currency="NZD">New Zealand — NZD</button>
+            <button type="button" class="currency-switcher-option" role="option" data-currency="USD">United States — USD</button>
+            <button type="button" class="currency-switcher-option" role="option" data-currency="EUR">Europe — EUR</button>
+            <a class="currency-switcher-more" href="{{ url_for('currency_pricing') }}">Currency &amp; pricing info</a>
+          </div>
+        </div>
+        {% endif %}
+        <a
+          href="{{ url_for('cart_view') }}"
+          class="header-cart"
+          {% if cart_has_items %}aria-label="Shopping cart, {{ cart_item_count }} items"{% else %}aria-label="Shopping cart"{% endif %}
+        >
+          <span class="header-cart-inner">
+            {% if cart_has_items %}
+            <span class="header-cart-heart" aria-hidden="true">❤</span>
+            {% endif %}
+            <svg class="header-cart-bag" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
+            </svg>
+          </span>
+        </a>
+        <nav class="nav nav-left" aria-label="Primary">
+          <a href="{{ url_for('shop') }}">Shop</a>
+          <a href="{{ url_for('listening_room_program') }}">The Listening Room</a>
+        </nav>
+      </div>
+      <a class="logo-home" href="{{ header_home_url }}" title="Home">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker — Home" width="200" height="48">
+      </a>
+      <div class="header-right">
+        <nav class="nav nav-account" aria-label="Account">
+          {% if current_user.is_authenticated %}
+            {% if user_is_effective_admin() %}
+              <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+            {% else %}
+              <a href="{{ url_for('affiliate_dashboard') }}">Your Listening Room</a>
+              <a href="{{ url_for('affiliate_page_edit') }}">Listening Room page</a>
+            {% endif %}
+            <a href="{{ url_for('logout') }}">Log out</a>
+          {% endif %}
+        </nav>
+        <button type="button" class="burger-btn" id="burger-menu-btn" aria-expanded="false" aria-controls="slide-menu" aria-label="Open products menu">
+          <span class="burger-lines" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </span>
+        </button>
+      </div>
+    </header>
+  </div>
+  <div class="slide-menu-backdrop" id="slide-menu-backdrop" aria-hidden="true" tabindex="-1"></div>
+  <aside id="slide-menu" class="slide-menu-panel" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="slide-menu-title">
+    <div class="slide-menu-inner">
+      <p id="slide-menu-title" class="sr-only">Products</p>
+      <nav class="slide-menu-nav" aria-label="Products">
+        <a class="slide-menu-item slide-menu-item--program" href="{{ url_for('listening_room_program') }}">
+          <span class="slide-menu-item-img slide-menu-item-img--lr" aria-hidden="true">LR</span>
+          <span class="slide-menu-item-label">The Listening Room</span>
+        </a>
+        {% for item in nav_menu_items %}
+        <a class="slide-menu-item" href="{{ url_for('product_detail', slug=item.slug) }}">
+          <span class="slide-menu-item-img">
+            <img src="{{ url_for('static', filename=item.menu_image) }}" alt="" width="800" height="450" loading="lazy" decoding="async">
+          </span>
+          <span class="slide-menu-item-label">{{ item.name }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+    </div>
+  </aside>
+  <script>
+  (function () {
+    var btn = document.getElementById("burger-menu-btn");
+    var backdrop = document.getElementById("slide-menu-backdrop");
+    var menu = document.getElementById("slide-menu");
+    var body = document.body;
+    if (!btn || !backdrop || !menu) return;
+    function setOpen(open) {
+      body.classList.toggle("slide-menu-open", open);
+      btn.classList.toggle("is-open", open);
+      btn.setAttribute("aria-expanded", open);
+      menu.setAttribute("aria-hidden", !open);
+      backdrop.setAttribute("aria-hidden", !open);
+      btn.setAttribute("aria-label", open ? "Close products menu" : "Open products menu");
+    }
+    function closeMenu() {
+      setOpen(false);
+    }
+    btn.addEventListener("click", function () {
+      setOpen(!body.classList.contains("slide-menu-open"));
+    });
+    backdrop.addEventListener("click", closeMenu);
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape" || !body.classList.contains("slide-menu-open")) return;
+      if (document.body.classList.contains("affiliate-modal-open")) return;
+      if (document.body.classList.contains("currency-switcher-open")) return;
+      closeMenu();
+    });
+  })();
+  </script>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-wrap">
+        {% for category, message in messages %}
+          <p class="flash flash-{{ category }}">{{ message }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <main class="main">{% block content %}{% endblock %}</main>
+
+  <footer class="site-footer">
+    <div class="site-footer-shell">
+      <div class="site-footer-grid {% if not current_user.is_authenticated %}site-footer-grid--three{% else %}site-footer-grid--two{% endif %}">
+        <div class="site-footer-col site-footer-col--connect">
+          <h3 class="site-footer-heading">Connect</h3>
+          <nav class="site-footer-nav-col" aria-label="Social and contact">
+            <a href="{{ footer_instagram_url }}" class="site-footer-link" target="_blank" rel="noopener noreferrer">Instagram</a>
+            <a href="{{ footer_tiktok_url }}" class="site-footer-link" target="_blank" rel="noopener noreferrer">TikTok</a>
+            <a href="mailto:{{ footer_email }}" class="site-footer-link">Email</a>
+          </nav>
+        </div>
+        <div class="site-footer-col site-footer-col--information">
+          <h3 class="site-footer-heading">Information</h3>
+          <nav class="site-footer-nav-col" aria-label="About pages">
+            <a href="{{ url_for('design_philosophy') }}" class="site-footer-link">Design philosophy</a>
+            <a href="{{ url_for('about_page') }}" class="site-footer-link">Our story</a>
+            <a href="{{ url_for('privacy_policy') }}" class="site-footer-link">Privacy policy</a>
+            <a href="{{ url_for('currency_pricing') }}" class="site-footer-link">Currency &amp; pricing</a>
+            <a href="{{ url_for('shipping_delivery') }}" class="site-footer-link">Shipping &amp; delivery</a>
+          </nav>
+          <p class="site-footer-currency-note muted small">Prices in USD or EUR are estimates for browsing. Final payment is processed in NZD.</p>
+        </div>
+        {% if not current_user.is_authenticated %}
+        <div class="site-footer-col site-footer-col--listening-room">
+          <h3 class="site-footer-heading">Listening Room</h3>
+          <nav class="site-footer-nav-col" aria-label="Listening Room program">
+            <a href="{{ url_for('listening_room_program') }}" class="site-footer-link">The Listening Room</a>
+          </nav>
+          <div class="site-footer-affiliate-auth">
+            <button type="button" class="site-footer-affiliate-login" id="affiliate-login-open-btn" aria-haspopup="dialog" aria-controls="affiliate-login-modal">Sign in</button>
+            <button type="button" class="site-footer-affiliate-login site-footer-affiliate-signup" id="affiliate-signup-open-btn" aria-haspopup="dialog" aria-controls="affiliate-signup-modal">Join</button>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+      <div class="site-footer-brand-row">
+        <div class="site-footer-logo">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker" width="180" height="44" decoding="async">
+        </div>
+        <p class="site-footer-copy">
+          Licorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Licorice Locker 2026.
+        </p>
+      </div>
+    </div>
+    {% if not current_user.is_authenticated %}
+    <div class="site-footer-bottom">
+      <a href="{{ url_for('login') }}" class="site-footer-admin-login">Admin login</a>
+    </div>
+    {% endif %}
+  </footer>
+
+  {% if not current_user.is_authenticated %}
+  <div id="affiliate-login-modal" class="affiliate-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="affiliate-modal-title">
+    <div class="affiliate-modal-backdrop" tabindex="-1"></div>
+    <div class="affiliate-modal-panel">
+      <button type="button" class="affiliate-modal-close" id="affiliate-modal-close" aria-label="Close dialog">&times;</button>
+      <h2 id="affiliate-modal-title" class="affiliate-modal-title">Listening Room sign in</h2>
+      <p class="affiliate-modal-lede">Sign in with your email and password, then enter the code from your authenticator app.</p>
+      <div id="affiliate-login-error" class="affiliate-modal-error" role="alert" hidden></div>
+
+      <div id="affiliate-step-credentials" class="affiliate-modal-step">
+        <form id="affiliate-form-credentials" class="affiliate-modal-form" novalidate>
+          <label class="affiliate-field">
+            <span class="affiliate-field-label">Email</span>
+            <input type="email" name="email" id="affiliate-email" required autocomplete="username" placeholder="Enter your email">
+          </label>
+          <label class="affiliate-field">
+            <span class="affiliate-field-label">Password</span>
+            <input type="password" name="password" id="affiliate-password" required autocomplete="current-password" placeholder="Enter your password">
+          </label>
+          <button type="submit" class="btn primary affiliate-modal-primary">Continue</button>
+        </form>
+        <p class="affiliate-modal-forgot"><a href="{{ url_for('forgot_password') }}" id="affiliate-forgot-link">Forgot password?</a></p>
+      </div>
+
+      <div id="affiliate-step-2fa" class="affiliate-modal-step" hidden>
+        <p id="affiliate-2fa-setup-hint" class="affiliate-modal-hint" hidden>Scan this QR code with Google Authenticator, Authy, or another authenticator app. Then enter the 6-digit code to finish setup.</p>
+        <p id="affiliate-2fa-verify-hint" class="affiliate-modal-hint" hidden>Enter the 6-digit code from your authenticator app.</p>
+        <div class="affiliate-modal-qr-wrap">
+          <img id="affiliate-totp-qr" alt="" class="affiliate-modal-qr" width="200" height="200" hidden decoding="async">
+        </div>
+        <label class="affiliate-field">
+          <span class="affiliate-field-label">Authentication code</span>
+          <input type="text" name="code" id="affiliate-totp-code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="000000">
+        </label>
+        <button type="button" class="btn primary affiliate-modal-primary" id="affiliate-2fa-submit">Sign in</button>
+        <p class="affiliate-modal-back"><button type="button" class="affiliate-modal-text-btn" id="affiliate-back-credentials">← Back</button></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="affiliate-signup-modal" class="affiliate-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="affiliate-signup-modal-title">
+    <div class="affiliate-modal-backdrop" tabindex="-1"></div>
+    <div class="affiliate-modal-panel">
+      <button type="button" class="affiliate-modal-close" id="affiliate-signup-modal-close" aria-label="Close dialog">&times;</button>
+      <h2 id="affiliate-signup-modal-title" class="affiliate-modal-title">Earn up to $128 per sale</h2>
+      <p class="affiliate-modal-lede">Start at 20% commission from your first sale. Hit 10 sales to unlock 25%; hit 25 to unlock 30%. No inventory, no customer service — we handle everything. Built for creators with taste. Create your account below; you will set up two-factor authentication the first time you sign in.</p>
+      <div id="affiliate-signup-error" class="affiliate-modal-error" role="alert" hidden></div>
+      <form id="affiliate-form-signup" class="affiliate-modal-form" method="post" action="{{ url_for('auth_affiliate_signup') }}" novalidate>
+        <label class="affiliate-field">
+          <span class="affiliate-field-label">First name</span>
+          <input type="text" name="first_name" id="affiliate-signup-first" required autocomplete="given-name" placeholder="Enter your first name">
+        </label>
+        <label class="affiliate-field">
+          <span class="affiliate-field-label">Last name</span>
+          <input type="text" name="last_name" id="affiliate-signup-last" required autocomplete="family-name" placeholder="Enter your last name">
+        </label>
+        <label class="affiliate-field">
+          <span class="affiliate-field-label">Email</span>
+          <input type="email" name="email" id="affiliate-signup-email" required autocomplete="email" placeholder="Enter your email">
+        </label>
+        <label class="affiliate-field">
+          <span class="affiliate-field-label">Password</span>
+          <input type="password" name="password" id="affiliate-signup-password" required autocomplete="new-password" placeholder="Create a password" minlength="8">
+        </label>
+        <label class="affiliate-field">
+          <span class="affiliate-field-label">Repeat password</span>
+          <input type="password" name="password_confirm" id="affiliate-signup-password2" required autocomplete="new-password" placeholder="Repeat your password" minlength="8">
+        </label>
+        <button type="submit" class="btn primary affiliate-modal-primary" id="affiliate-signup-submit">Join the Affiliate Program</button>
+      </form>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var step1Url = {{ url_for('auth_affiliate_step1') | tojson }};
+    var step2Url = {{ url_for('auth_affiliate_step2') | tojson }};
+    var modal = document.getElementById("affiliate-login-modal");
+    var openBtn = document.getElementById("affiliate-login-open-btn");
+    var closeBtn = document.getElementById("affiliate-modal-close");
+    var backdrop = modal && modal.querySelector(".affiliate-modal-backdrop");
+    var stepCred = document.getElementById("affiliate-step-credentials");
+    var step2fa = document.getElementById("affiliate-step-2fa");
+    var formCred = document.getElementById("affiliate-form-credentials");
+    var errEl = document.getElementById("affiliate-login-error");
+    var qrImg = document.getElementById("affiliate-totp-qr");
+    var hintSetup = document.getElementById("affiliate-2fa-setup-hint");
+    var hintVerify = document.getElementById("affiliate-2fa-verify-hint");
+    var totpInput = document.getElementById("affiliate-totp-code");
+    var btn2fa = document.getElementById("affiliate-2fa-submit");
+    var backCred = document.getElementById("affiliate-back-credentials");
+    if (!modal || !openBtn) return;
+
+    function setError(msg) {
+      if (!errEl) return;
+      if (msg) {
+        errEl.textContent = msg;
+        errEl.hidden = false;
+      } else {
+        errEl.textContent = "";
+        errEl.hidden = true;
+      }
+    }
+
+    function showCredentials() {
+      if (stepCred) stepCred.hidden = false;
+      if (step2fa) step2fa.hidden = true;
+      if (qrImg) { qrImg.hidden = true; qrImg.removeAttribute("src"); }
+      if (hintSetup) hintSetup.hidden = true;
+      if (hintVerify) hintVerify.hidden = true;
+      if (totpInput) totpInput.value = "";
+      setError("");
+    }
+
+    function show2fa(step) {
+      if (stepCred) stepCred.hidden = true;
+      if (step2fa) step2fa.hidden = false;
+      var isSetup = step === "setup";
+      if (hintSetup) hintSetup.hidden = !isSetup;
+      if (hintVerify) hintVerify.hidden = isSetup;
+      if (qrImg) qrImg.hidden = !isSetup;
+      if (totpInput) { totpInput.value = ""; totpInput.focus(); }
+    }
+
+    function openModal() {
+      var signupModal = document.getElementById("affiliate-signup-modal");
+      if (signupModal) signupModal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("slide-menu-open");
+      var burger = document.getElementById("burger-menu-btn");
+      var slideBackdrop = document.getElementById("slide-menu-backdrop");
+      var slideMenu = document.getElementById("slide-menu");
+      if (burger) {
+        burger.classList.remove("is-open");
+        burger.setAttribute("aria-expanded", "false");
+        burger.setAttribute("aria-label", "Open products menu");
+      }
+      if (slideBackdrop) slideBackdrop.setAttribute("aria-hidden", "true");
+      if (slideMenu) slideMenu.setAttribute("aria-hidden", "true");
+      modal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("affiliate-modal-open");
+      showCredentials();
+      var email = document.getElementById("affiliate-email");
+      if (email) setTimeout(function () { email.focus(); }, 50);
+    }
+
+    function closeModal() {
+      modal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("affiliate-modal-open");
+      showCredentials();
+    }
+
+    openBtn.addEventListener("click", openModal);
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (backdrop) backdrop.addEventListener("click", closeModal);
+    if (backCred) backCred.addEventListener("click", showCredentials);
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape" || !document.body.classList.contains("affiliate-modal-open")) return;
+      if (modal.getAttribute("aria-hidden") !== "false") return;
+      closeModal();
+    });
+
+    var u = new URL(window.location.href);
+    if (u.searchParams.get("open_affiliate_login") === "1") {
+      u.searchParams.delete("open_affiliate_login");
+      var qs = u.searchParams.toString();
+      window.history.replaceState({}, "", u.pathname + (qs ? "?" + qs : "") + u.hash);
+      openModal();
+    }
+
+    if (formCred) {
+      formCred.addEventListener("submit", function (e) {
+        e.preventDefault();
+        setError("");
+        var email = (document.getElementById("affiliate-email") || {}).value || "";
+        var password = (document.getElementById("affiliate-password") || {}).value || "";
+        fetch(step1Url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ email: email.trim(), password: password }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok || !x.j.ok) {
+              setError(x.j && x.j.error === "invalid_credentials" ? "Invalid email or password." : "Something went wrong. Try again.");
+              return;
+            }
+            if (x.j.step === "setup" && x.j.qr && qrImg) {
+              qrImg.src = x.j.qr;
+            }
+            show2fa(x.j.step);
+          })
+          .catch(function () {
+            setError("Network error. Check your connection.");
+          });
+      });
+    }
+
+    function submit2fa() {
+      setError("");
+      var code = ((totpInput && totpInput.value) || "").replace(/\s/g, "");
+      fetch(step2Url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ code: code }),
+      })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (x) {
+          if (!x.ok || !x.j.ok) {
+            if (x.j && x.j.error === "session_expired") {
+              setError("Session expired. Start again from email and password.");
+              showCredentials();
+              return;
+            }
+            setError(x.j && x.j.error === "invalid_code" ? "Invalid code. Check your authenticator app." : "Something went wrong.");
+            return;
+          }
+          if (x.j.redirect) window.location.href = x.j.redirect;
+        })
+        .catch(function () {
+          setError("Network error. Check your connection.");
+        });
+    }
+
+    if (btn2fa) btn2fa.addEventListener("click", submit2fa);
+    if (totpInput) {
+      totpInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") submit2fa();
+      });
+    }
+  })();
+  </script>
+  <script>
+  (function () {
+    var signupModal = document.getElementById("affiliate-signup-modal");
+    var openBtn = document.getElementById("affiliate-signup-open-btn");
+    var closeBtn = document.getElementById("affiliate-signup-modal-close");
+    var backdrop = signupModal && signupModal.querySelector(".affiliate-modal-backdrop");
+    var form = document.getElementById("affiliate-form-signup");
+    var errEl = document.getElementById("affiliate-signup-error");
+    if (!signupModal || !openBtn) return;
+
+    function setError(msg) {
+      if (!errEl) return;
+      if (msg) {
+        errEl.textContent = msg;
+        errEl.hidden = false;
+      } else {
+        errEl.textContent = "";
+        errEl.hidden = true;
+      }
+    }
+
+    function openSignupModal() {
+      var loginModal = document.getElementById("affiliate-login-modal");
+      if (loginModal) loginModal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("slide-menu-open");
+      var burger = document.getElementById("burger-menu-btn");
+      var slideBackdrop = document.getElementById("slide-menu-backdrop");
+      var slideMenu = document.getElementById("slide-menu");
+      if (burger) {
+        burger.classList.remove("is-open");
+        burger.setAttribute("aria-expanded", "false");
+        burger.setAttribute("aria-label", "Open products menu");
+      }
+      if (slideBackdrop) slideBackdrop.setAttribute("aria-hidden", "true");
+      if (slideMenu) slideMenu.setAttribute("aria-hidden", "true");
+      signupModal.setAttribute("aria-hidden", "false");
+      document.body.classList.add("affiliate-modal-open");
+      setError("");
+      var first = document.getElementById("affiliate-signup-first");
+      if (first) setTimeout(function () { first.focus(); }, 50);
+    }
+
+    function closeSignupModal() {
+      signupModal.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("affiliate-modal-open");
+      setError("");
+    }
+
+    openBtn.addEventListener("click", openSignupModal);
+    if (closeBtn) closeBtn.addEventListener("click", closeSignupModal);
+    if (backdrop) backdrop.addEventListener("click", closeSignupModal);
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape" || !document.body.classList.contains("affiliate-modal-open")) return;
+      if (signupModal.getAttribute("aria-hidden") !== "false") return;
+      closeSignupModal();
+    });
+
+    if (form) {
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        setError("");
+        var first = ((document.getElementById("affiliate-signup-first") || {}).value || "").trim();
+        var last = ((document.getElementById("affiliate-signup-last") || {}).value || "").trim();
+        var email = ((document.getElementById("affiliate-signup-email") || {}).value || "").trim();
+        var pw = (document.getElementById("affiliate-signup-password") || {}).value || "";
+        var pw2 = (document.getElementById("affiliate-signup-password2") || {}).value || "";
+        if (!first || !last || !email || !pw || !pw2) {
+          setError("Please fill in all fields.");
+          return;
+        }
+        if (pw !== pw2) {
+          setError("Passwords do not match.");
+          return;
+        }
+        if (pw.length < 8) {
+          setError("Password must be at least 8 characters.");
+          return;
+        }
+        var submitBtn = document.getElementById("affiliate-signup-submit");
+        if (submitBtn) submitBtn.disabled = true;
+        HTMLFormElement.prototype.submit.call(form);
+      });
+    }
+
+    var su = new URL(window.location.href);
+    if (su.searchParams.get("open_affiliate_signup") === "1") {
+      su.searchParams.delete("open_affiliate_signup");
+      var suQs = su.searchParams.toString();
+      window.history.replaceState({}, "", su.pathname + (suQs ? "?" + suQs : "") + su.hash);
+      openSignupModal();
+    }
+  })();
+  </script>
+  {% endif %}
+  {% if analytics_public %}
+  <div
+    id="cookie-banner"
+    class="cookie-banner"
+    role="region"
+    aria-label="Cookies and privacy"
+    hidden
+  >
+    <div class="cookie-banner-inner">
+      <p class="cookie-banner-text">
+        We use cookies so the shop, cart, and basic analytics work smoothly.
+        <strong>We do not sell your data to third parties.</strong>
+      </p>
+      <div class="cookie-banner-actions">
+        <button type="button" class="btn cookie-banner-btn cookie-banner-decline" id="cookie-banner-decline">Decline</button>
+        <button type="button" class="btn primary cookie-banner-btn cookie-banner-accept" id="cookie-banner-accept">Accept</button>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var root = document.documentElement;
+    var el = document.getElementById("cookie-banner");
+    if (!el) return;
+    function dismiss() {
+      try {
+        localStorage.setItem("ll_cookie_banner", "1");
+      } catch (e) {}
+      root.classList.add("cookie-banner-dismissed");
+      document.body.classList.remove("cookie-banner-visible");
+      el.hidden = true;
+      el.setAttribute("aria-hidden", "true");
+    }
+    if (root.classList.contains("cookie-banner-dismissed")) {
+      return;
+    }
+    document.body.classList.add("cookie-banner-visible");
+    el.hidden = false;
+    el.removeAttribute("aria-hidden");
+    var acc = document.getElementById("cookie-banner-accept");
+    var dec = document.getElementById("cookie-banner-decline");
+    if (acc) acc.addEventListener("click", dismiss);
+    if (dec) dec.addEventListener("click", dismiss);
+  })();
+  </script>
+  <script src="{{ url_for('static', filename='analytics.js') }}" defer></script>
+  {% endif %}
+
+  <div
+    id="cart-upsell-modal"
+    class="cart-upsell-modal"
+    aria-hidden="true"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="cart-upsell-title"
+  >
+    <div class="cart-upsell-backdrop" data-cart-upsell-close tabindex="-1"></div>
+    <div class="cart-upsell-panel">
+      <button type="button" class="cart-upsell-x" data-cart-upsell-close aria-label="Close">&times;</button>
+      <div class="cart-upsell-layout">
+        <div class="cart-upsell-visual">
+          <img data-upsell-img src="" alt="" width="640" height="480" loading="lazy" hidden>
+        </div>
+        <div class="cart-upsell-copy">
+          <h2 id="cart-upsell-title" class="cart-upsell-title" data-upsell-title></h2>
+          <p class="cart-upsell-body" data-upsell-body></p>
+          <div class="cart-upsell-actions">
+            <a class="btn primary cart-upsell-primary" data-upsell-primary href="#"></a>
+            <a class="btn cart-upsell-secondary" data-upsell-secondary href="#"></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='cart-upsell.js') }}" defer></script>
+  {% if not user_is_effective_admin() %}
+  <script src="{{ url_for('static', filename='currency-display.js') }}" defer></script>
+  {% endif %}
+</body>
+</html>

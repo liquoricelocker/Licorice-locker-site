@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block body_class %}affiliate-portal{% if not current_user.terms_accepted %} affiliate-portal-locked{% endif %}{% endblock %}
+{% block content %}
+<div class="affiliate-portal-shell {% if not current_user.terms_accepted %}affiliate-portal-locked{% endif %}">
+  <header class="affiliate-dash-header" aria-label="Your Listening Room">
+    <div class="affiliate-dash-header-brand">
+      <a class="affiliate-dash-logo" href="{{ url_for('shop') }}" title="Shop">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker" width="132" height="32" decoding="async">
+      </a>
+      <span class="affiliate-dash-eyebrow">The Listening Room</span>
+    </div>
+    <nav class="affiliate-dash-nav" aria-label="Listening Room">
+      <a href="{{ url_for('affiliate_dashboard') }}" class="{% if affiliate_nav_active == 'dashboard' %}is-active{% endif %}">Your Listening Room</a>
+      <a href="{{ url_for('affiliate_page_edit') }}" class="{% if affiliate_nav_active == 'page' %}is-active{% endif %}">Customize page</a>
+      {% if current_user.affiliate_code and current_user.terms_accepted %}
+      <a href="{{ url_for('listening_room', code=current_user.affiliate_code) }}" target="_blank" rel="noopener noreferrer">View Listening Room page</a>
+      {% elif current_user.affiliate_slug and current_user.terms_accepted %}
+      <a href="{{ url_for('affiliate_landing', slug=current_user.affiliate_slug) }}" target="_blank" rel="noopener noreferrer">View Listening Room page</a>
+      {% elif current_user.affiliate_slug %}
+      <span class="affiliate-nav-disabled" title="Accept The Listening Room terms to enable your public link">View Listening Room page</span>
+      {% endif %}
+    </nav>
+    {% if current_user.display_picture_url %}
+    <div class="affiliate-dash-header-profile" aria-hidden="true">
+      <span class="affiliate-dash-header-avatar-wrap">
+        <img
+          class="affiliate-dash-header-avatar"
+          src="{{ affiliate_media_src(current_user.display_picture_url) }}"
+          alt=""
+          width="40"
+          height="40"
+          decoding="async"
+        >
+      </span>
+    </div>
+    {% endif %}
+  </header>
+
+  <section class="panel affiliate-terms-panel-block" aria-labelledby="affiliate-terms-heading">
+    <h2 id="affiliate-terms-heading">Terms and conditions</h2>
+    <p class="muted">These terms unlock your space in The Listening Room: your public link, commissions, and customization below require agreement.</p>
+    <button type="button" class="btn primary" id="affiliate-open-terms-btn">View terms and conditions</button>
+    <p class="muted small affiliate-terms-privacy-link">
+      <a href="{{ url_for('privacy_policy') }}" class="site-footer-link">Privacy policy</a>
+    </p>
+    {% if current_user.terms_accepted %}
+    <p class="muted small affiliate-terms-status">Status: <strong>Agreed</strong>{% if current_user.terms_accepted_at %} ({{ current_user.terms_accepted_at[:10] }}){% endif %}. You can open the terms anytime to review updates.</p>
+    {% else %}
+    <p class="muted small affiliate-terms-status">Status: <strong>Not agreed</strong> — your Listening Room link is disabled for customers and the tools below are locked.</p>
+    {% endif %}
+  </section>
+
+  <div class="affiliate-dashboard-main affiliate-locked-target">
+    {% block affiliate_inner %}{% endblock %}
+  </div>
+  {% block affiliate_footer %}{% endblock %}
+</div>
+
+{% include "affiliate_terms_modal.html" %}
+
+<script>
+(function () {
+  var modal = document.getElementById("affiliate-terms-modal");
+  var openBtn = document.getElementById("affiliate-open-terms-btn");
+  var closeBtn = document.getElementById("affiliate-terms-modal-close");
+  var backdrop = document.getElementById("affiliate-terms-modal-backdrop");
+  var agreeBtn = document.getElementById("affiliate-terms-agree-btn");
+  var declineBtn = document.getElementById("affiliate-terms-decline-btn");
+  var termsUrl = {{ url_for("affiliate_terms_action") | tojson }};
+  if (!modal || !openBtn) return;
+
+  function setOpen(open) {
+    modal.setAttribute("aria-hidden", open ? "false" : "true");
+    document.body.classList.toggle("affiliate-terms-modal-open", open);
+    if (open) {
+      var scrollEl = modal.querySelector(".affiliate-terms-scroll");
+      if (scrollEl) scrollEl.focus();
+    }
+  }
+
+  openBtn.addEventListener("click", function () { setOpen(true); });
+  if (closeBtn) closeBtn.addEventListener("click", function () { setOpen(false); });
+  if (backdrop) backdrop.addEventListener("click", function () { setOpen(false); });
+
+  function postTerms(action) {
+    var body = "action=" + encodeURIComponent(action);
+    return fetch(termsUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: body,
+      credentials: "same-origin",
+    });
+  }
+
+  if (agreeBtn) {
+    agreeBtn.addEventListener("click", function () {
+      agreeBtn.disabled = true;
+      postTerms("accept")
+        .then(function (r) {
+          if (r.ok) window.location.reload();
+          else agreeBtn.disabled = false;
+        })
+        .catch(function () { agreeBtn.disabled = false; });
+    });
+  }
+  if (declineBtn) {
+    declineBtn.addEventListener("click", function () {
+      declineBtn.disabled = true;
+      postTerms("decline")
+        .then(function (r) {
+          if (r.ok) window.location.reload();
+          else declineBtn.disabled = false;
+        })
+        .catch(function () { declineBtn.disabled = false; });
+    });
+  }
+})();
+</script>
+{% endblock %}

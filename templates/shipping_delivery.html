@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Shipping &amp; Delivery — Licorice Locker{% endblock %}
+{% block body_class %}shipping-page{% endblock %}
+{% block content %}
+<article class="info-doc" aria-labelledby="shipping-title">
+  <header class="info-doc-header">
+    <h1 id="shipping-title" class="info-doc-h1">Shipping &amp; Delivery</h1>
+    <p class="info-doc-lede">Each order is carefully prepared and dispatched with attention to detail.</p>
+  </header>
+
+  <section class="info-doc-section" aria-labelledby="shipping-processing">
+    <h2 id="shipping-processing" class="info-doc-h2">Processing time</h2>
+    <p>All orders are processed within <strong>2 business days</strong>.</p>
+    <p>This allows time for quality checks, packaging, and dispatch preparation.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-ship">
+    <h2 id="shipping-ship" class="info-doc-h2">Shipping</h2>
+    <p>Once your order has been dispatched, you will receive a confirmation email with tracking details.</p>
+    <p>Shipping times may vary depending on your location, but typically:</p>
+    <ul class="info-doc-list">
+      <li>New Zealand: 2–5 business days</li>
+      <li>International: 5–12 business days</li>
+    </ul>
+    <p>Please note that shipping times are estimates and may be affected by external factors.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-tracking">
+    <h2 id="shipping-tracking" class="info-doc-h2">Tracking</h2>
+    <p>All orders include tracking.</p>
+    <p>You will receive your tracking link via email once your order has been shipped.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-delays">
+    <h2 id="shipping-delays" class="info-doc-h2">Delays</h2>
+    <p>While we do everything we can to ensure timely delivery, delays can occasionally occur due to couriers or customs.</p>
+    <p>Licorice Locker is not responsible for delays once the item has been dispatched.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-returns">
+    <h2 id="shipping-returns" class="info-doc-h2">Returns</h2>
+    <p>If something isn’t right, we’re here to help.</p>
+    <p>You may request a return within <strong>14 days of receiving your order</strong>.</p>
+    <p>To be eligible for a return:</p>
+    <ul class="info-doc-list">
+      <li>The item must be unused and in its original condition</li>
+      <li>The item must be returned in its original packaging</li>
+    </ul>
+    <p>To initiate a return, contact us at: <a href="mailto:{{ footer_email }}" class="info-doc-link">{{ footer_email }}</a></p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-refunds">
+    <h2 id="shipping-refunds" class="info-doc-h2">Refunds</h2>
+    <p>Once your return is received and inspected, we will notify you of the outcome.</p>
+    <p>If approved, your refund will be processed to your original payment method.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-return-ship">
+    <h2 id="shipping-return-ship" class="info-doc-h2">Return shipping</h2>
+    <p>Customers are responsible for return shipping costs unless the item is faulty or incorrect.</p>
+  </section>
+
+  <section class="info-doc-section" aria-labelledby="shipping-damaged">
+    <h2 id="shipping-damaged" class="info-doc-h2">Damaged or incorrect items</h2>
+    <p>If your order arrives damaged or incorrect, please contact us within 7 days of delivery.</p>
+    <p>We will resolve the issue as quickly as possible.</p>
+  </section>
+</article>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order.order_number }} — Admin{% endblock %}
+{% block content %}
+<div class="admin-order-page">
+  <p class="admin-order-back"><a href="{{ url_for('admin_dashboard') }}">← All orders</a></p>
+
+  <header class="admin-order-hero">
+    <div class="admin-order-hero-main">
+      <p class="admin-order-eyebrow muted">Order</p>
+      <h1 class="admin-order-title">{{ order.order_number }}</h1>
+      <p class="admin-order-meta muted">
+        Placed <time datetime="{{ order.created_at }}">{{ order.created_at }}</time>
+        {% if order.receipt_sent %}
+        · Receipt sent{% if order.receipt_sent_at %} {{ order.receipt_sent_at[:16] }}{% endif %}
+        {% endif %}
+      </p>
+    </div>
+    <div class="admin-order-fulfill-card">
+      <p class="admin-order-fulfill-label">Fulfillment</p>
+      <form method="post" action="{{ url_for('admin_order_fulfillment', order_id=order.id) }}" class="admin-fulfillment-toggle-form">
+        <input type="hidden" name="fulfilled" id="admin-fulfilled-hidden" value="{{ '1' if is_fulfilled else '0' }}">
+        <input type="hidden" name="return_to" value="detail">
+        <input type="hidden" name="search_q" value="">
+        <label class="admin-fulfillment-switch" title="Toggle fulfilled / unfulfilled">
+          <span class="admin-fulfillment-switch-text" id="admin-fulfill-label">{{ 'Fulfilled' if is_fulfilled else 'Unfulfilled' }}</span>
+          <span class="admin-switch">
+            <input
+              type="checkbox"
+              class="admin-switch-input"
+              {% if is_fulfilled %}checked{% endif %}
+              aria-checked="{{ 'true' if is_fulfilled else 'false' }}"
+              onchange="var h=document.getElementById('admin-fulfilled-hidden'); var l=document.getElementById('admin-fulfill-label'); h.value=this.checked?'1':'0'; l.textContent=this.checked?'Fulfilled':'Unfulfilled'; this.setAttribute('aria-checked', this.checked); this.form.submit();"
+            >
+            <span class="admin-switch-track" aria-hidden="true"><span class="admin-switch-thumb"></span></span>
+          </span>
+        </label>
+      </form>
+      <p class="muted small admin-order-fulfill-hint">New orders start unfulfilled. Turning on fulfilled emails the customer (when SMTP is configured).</p>
+    </div>
+  </header>
+
+  <div class="admin-order-grid">
+    <div class="admin-order-main">
+      <section class="admin-card">
+        <h2 class="admin-card-title">Order details</h2>
+        <div class="table-wrap admin-order-lines-wrap">
+          <table class="data-table admin-order-lines">
+            <thead>
+              <tr>
+                <th scope="col">Product</th>
+                <th scope="col" class="admin-order-col-num">Price</th>
+                <th scope="col" class="admin-order-col-num">Qty</th>
+                <th scope="col" class="admin-order-col-num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+              {% set line_total = (it.unit_price_cents * it.quantity) %}
+              <tr>
+                <td>
+                  <a href="{{ url_for('product_detail', slug=it.slug) }}" class="admin-order-product-link">{{ it.product_name }}</a>
+                </td>
+                <td class="admin-order-col-num">{{ format_money(it.unit_price_cents) }}</td>
+                <td class="admin-order-col-num">{{ it.quantity }}</td>
+                <td class="admin-order-col-num">{{ format_money(line_total) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if order.customer_notes %}
+        <div class="admin-order-notes">
+          <h3 class="admin-order-notes-title">Customer notes</h3>
+          <p class="admin-order-notes-body">{{ order.customer_notes }}</p>
+        </div>
+        {% endif %}
+
+        <div class="admin-order-totals">
+          <div class="admin-order-total-row">
+            <span>Subtotal</span>
+            <span>{{ format_money(subtotal_cents) }}</span>
+          </div>
+          <div class="admin-order-total-row">
+            <span>Shipping</span>
+            <span>{{ format_money(shipping_cents) }}</span>
+          </div>
+          <div class="admin-order-total-row admin-order-total-grand">
+            <span>Total</span>
+            <span>{{ format_money(order.total_cents) }}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-card">
+        <h2 class="admin-card-title">Shipping &amp; tracking</h2>
+        <form method="post" class="form-stack admin-order-tracking-form">
+          <input type="hidden" name="action" value="tracking">
+          <label>Tracking number
+            <input name="shipping_tracking" value="{{ order.shipping_tracking or '' }}" placeholder="Carrier tracking ID" autocomplete="off">
+          </label>
+          <button type="submit" class="btn primary">Save tracking</button>
+        </form>
+        <p class="muted small">Saves the tracking reference only. Customer shipping emails can be wired site-wide later.</p>
+      </section>
+    </div>
+
+    <aside class="admin-order-sidebar">
+      <section class="admin-card">
+        <h2 class="admin-card-title">Customer</h2>
+        <p class="admin-order-customer-name">{{ order.customer_first }} {{ order.customer_last }}</p>
+        <p><a href="mailto:{{ order.customer_email }}">{{ order.customer_email }}</a></p>
+        <p class="admin-order-phone">{% if order.customer_phone %}{{ order.customer_phone }}{% else %}<span class="muted">No phone on file</span>{% endif %}</p>
+        {% if order.payment_method %}
+        <p class="muted small">Payment: {{ order.payment_method }}</p>
+        {% endif %}
+      </section>
+
+      <section class="admin-card">
+        <h2 class="admin-card-title">Shipping address</h2>
+        {% if order.shipping_name %}
+        <p class="admin-order-address-name"><strong>{{ order.shipping_name }}</strong></p>
+        {% endif %}
+        <address class="admin-order-address">
+          {{ order.shipping_line1 }}<br>
+          {% if order.shipping_line2 %}{{ order.shipping_line2 }}<br>{% endif %}
+          {{ order.shipping_city }}{% if order.shipping_region %}, {{ order.shipping_region }}{% endif %} {{ order.shipping_postal }}<br>
+          {{ order.shipping_country }}
+        </address>
+      </section>
+
+      <section class="admin-card admin-card-affiliate">
+        <h2 class="admin-card-title">Listening Room</h2>
+        {% if affiliate %}
+        <p class="admin-order-aff-name">{{ affiliate.full_name or '—' }}</p>
+        {% if order.affiliate_code %}
+        <p class="muted small">Code on order: <code>{{ order.affiliate_code }}</code></p>
+        {% endif %}
+        <p><a href="mailto:{{ affiliate.email }}">{{ affiliate.email }}</a></p>
+        <p class="admin-order-commission">
+          Commission (this order): <strong>{{ format_money((order.affiliate_commission_cents or 0)|int) }}</strong>
+          {% if order.affiliate_commission_rate %}
+          <span class="muted small">@ {{ ((order.affiliate_commission_rate or 0) * 100)|int }}%</span>
+          {% endif %}
+        </p>
+        <p class="muted small">Counted toward commission: {% if order.affiliate_counted %}Yes{% else %}No{% endif %}</p>
+        {% elif order.affiliate_code %}
+        <p class="muted small">Referral code recorded: <code>{{ order.affiliate_code }}</code> (no linked member)</p>
+        {% else %}
+        <p class="admin-order-direct-badge">Direct order</p>
+        <p class="muted small">No Listening Room attribution.</p>
+        {% endif %}
+      </section>
+
+      {% if order.guest_session_id %}
+      <section class="admin-card admin-card-meta">
+        <p class="muted small">Guest session: <code>{{ order.guest_session_id }}</code></p>
+      </section>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+{% endblock %}

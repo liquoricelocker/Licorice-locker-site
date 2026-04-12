@@ -1,0 +1,539 @@
+{% extends "base.html" %}
+{% block title %}Admin — Licorice Locker{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+{% endblock %}
+{% block content %}
+
+<section class="panel admin-analytics-panel" aria-labelledby="admin-analytics-heading">
+  <div class="admin-analytics-head">
+    <h2 id="admin-analytics-heading" class="admin-orders-h1">Traffic &amp; geo</h2>
+    <div class="admin-analytics-toolbar">
+      <label class="admin-analytics-period-label" for="admin-analytics-period">Period</label>
+      <select id="admin-analytics-period" class="admin-analytics-period-select" aria-describedby="admin-analytics-period-hint">
+        <option value="0">All time</option>
+        <option value="7" selected>Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <span id="admin-analytics-period-hint" class="sr-only">Filters session and order charts by start or order date.</span>
+    </div>
+    <p class="muted admin-orders-sub" id="admin-analytics-live">Loading…</p>
+  </div>
+  <p class="muted small admin-analytics-privacy">
+    Visitor country and city come from IP lookup at session start (hashed IP only, no raw address stored). Order rows store geo at checkout (IP-based) with fallback to shipping country for older orders. No payment data. Inactive sessions (~15&nbsp;min) may get a drop-off label from the last event. Add consent before scaling EU traffic.
+  </p>
+  <p class="muted small" id="admin-analytics-devices" aria-live="polite"></p>
+  <div class="admin-analytics-charts">
+    <div class="admin-analytics-chart-card">
+      <h3 class="admin-analytics-chart-title">Visitors by country</h3>
+      <p class="muted small admin-analytics-chart-note">Sessions started in period (geo at first page).</p>
+      <div class="admin-analytics-canvas-wrap">
+        <canvas id="admin-chart-countries" height="220"></canvas>
+      </div>
+    </div>
+    <div class="admin-analytics-chart-card">
+      <h3 class="admin-analytics-chart-title">Orders by country</h3>
+      <p class="muted small admin-analytics-chart-note">Checkout IP geo; hover for revenue (NZD).</p>
+      <div class="admin-analytics-canvas-wrap">
+        <canvas id="admin-chart-orders-geo" height="220"></canvas>
+      </div>
+    </div>
+    <div class="admin-analytics-chart-card">
+      <h3 class="admin-analytics-chart-title">Top cities (visitors)</h3>
+      <p class="muted small admin-analytics-chart-note">When city is available from geo lookup.</p>
+      <div class="admin-analytics-canvas-wrap">
+        <canvas id="admin-chart-cities" height="220"></canvas>
+      </div>
+    </div>
+    <div class="admin-analytics-chart-card">
+      <h3 class="admin-analytics-chart-title">Drop-off (last event)</h3>
+      <div class="admin-analytics-canvas-wrap">
+        <canvas id="admin-chart-dropoffs" height="220"></canvas>
+      </div>
+    </div>
+    <div class="admin-analytics-chart-card admin-analytics-chart-card--conversion">
+      <h3 class="admin-analytics-chart-title">Conversion</h3>
+      <p class="admin-analytics-conv-stat" id="admin-conversion-stat">—</p>
+      <div class="admin-analytics-canvas-wrap admin-analytics-doughnut-wrap">
+        <canvas id="admin-chart-conversion" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="admin-orders-command panel">
+  <div class="admin-orders-command-head">
+    <div class="admin-orders-command-title">
+      <h1 class="admin-orders-h1">All orders</h1>
+      <p class="muted admin-orders-sub" id="admin-live">Loading…</p>
+    </div>
+    <form method="get" action="{{ url_for('admin_dashboard') }}" class="admin-orders-search-form" id="admin-orders-search-form" role="search">
+      <input type="hidden" name="sa_q" value="{{ sa_q }}">
+      <label class="sr-only" for="admin-orders-q">Search orders</label>
+      <input
+        type="search"
+        id="admin-orders-q"
+        name="q"
+        class="admin-orders-search-input"
+        value="{{ search_q }}"
+        placeholder="Search by customer name or order number"
+        autocomplete="off"
+      >
+    </form>
+  </div>
+
+  <div class="admin-orders-scroll" aria-label="Orders list">
+    <table class="data-table admin-orders-table">
+      <thead>
+        <tr>
+          <th scope="col">Order</th>
+          <th scope="col">Date</th>
+          <th scope="col">Customer</th>
+          <th scope="col" class="admin-orders-num">Items</th>
+          <th scope="col">Total</th>
+          <th scope="col">Listening Room</th>
+          <th scope="col">Commission</th>
+          <th scope="col">Fulfillment</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in orders %}
+        <tr class="admin-order-row">
+          <td>
+            <a class="admin-order-number" href="{{ url_for('admin_order_detail_ref', order_number=o.order_number) }}">{{ o.order_number }}</a>
+          </td>
+          <td class="admin-order-date muted">{{ (o.created_at or '')[:16] }}</td>
+          <td><span class="admin-order-customer">{{ o.customer_first }} {{ o.customer_last }}</span></td>
+          <td class="admin-orders-num">{{ o.item_count }}</td>
+          <td class="admin-order-total">{{ format_money(o.total_cents) }}</td>
+          <td>
+            {% if o.affiliate_user_id %}
+            <span class="admin-order-aff">{{ o.aff_name or '—' }}</span>
+            {% if o.aff_code %}<span class="muted"> · {{ o.aff_code }}</span>{% endif %}
+            {% else %}
+            <span class="admin-order-direct">Direct</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if o.affiliate_user_id %}
+            {{ format_money((o.affiliate_commission_cents or 0)|int) }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('admin_order_fulfillment', order_id=o.id) }}" class="admin-fulfillment-form">
+              <input type="hidden" name="search_q" value="{{ search_q }}">
+              <label class="sr-only" for="fulfill-{{ o.id }}">Fulfillment for {{ o.order_number }}</label>
+              <select id="fulfill-{{ o.id }}" name="fulfilled" class="admin-fulfillment-select" onchange="this.form.submit()">
+                <option value="0" {% if (o.fulfillment_status or '') != 'shipped' %}selected{% endif %}>Unfulfilled</option>
+                <option value="1" {% if (o.fulfillment_status or '') == 'shipped' %}selected{% endif %}>Fulfilled</option>
+              </select>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="admin-orders-empty">{% if search_q %}No orders match your search.{% else %}No orders yet.{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="admin-orders-command panel admin-success-affiliates">
+  <div class="admin-orders-command-head">
+    <div class="admin-orders-command-title">
+      <h2 class="admin-orders-h1">Successful affiliates</h2>
+      <p class="muted admin-orders-sub">Listening Room members with at least one referral sale in <strong>{{ successful_month_label }}</strong>.</p>
+    </div>
+    <form method="get" action="{{ url_for('admin_dashboard') }}" class="admin-orders-search-form" id="admin-sa-search-form" role="search">
+      <input type="hidden" name="q" value="{{ search_q }}">
+      <label class="sr-only" for="admin-sa-q">Search affiliates</label>
+      <input
+        type="search"
+        id="admin-sa-q"
+        name="sa_q"
+        class="admin-orders-search-input"
+        value="{{ sa_q }}"
+        placeholder="Search by name or affiliate code"
+        autocomplete="off"
+      >
+    </form>
+  </div>
+
+  <div class="admin-orders-scroll" aria-label="Successful affiliates">
+    <table class="data-table admin-orders-table">
+      <thead>
+        <tr>
+          <th scope="col">Name / code</th>
+          <th scope="col" class="admin-orders-num">Sales (month)</th>
+          <th scope="col">Commission (month)</th>
+          <th scope="col">Payout</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in successful_affiliates %}
+        <tr class="admin-order-row admin-sa-click-row" data-href="{{ admin_affiliate_orders_url(s.affiliate_code, search_q, sa_q) }}">
+          <td>
+            <span class="admin-sa-name">{{ s.full_name or '—' }}</span>
+            {% if s.affiliate_code %}<span class="muted"> · <code>{{ s.affiliate_code }}</code></span>{% endif %}
+          </td>
+          <td class="admin-orders-num">{{ s.sales_this_month }}</td>
+          <td>{{ format_money(s.commission_cents_this_month|int) }}</td>
+          <td><span class="admin-payout-badge {% if (s.payout_status or '') == 'paid' %}admin-payout-paid{% else %}admin-payout-pending{% endif %}">{{ 'Paid' if (s.payout_status or '') == 'paid' else 'Not paid' }}</span></td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="admin-orders-empty">{% if sa_q %}No members match your search.{% else %}No referral sales this month yet.{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Members</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Slug</th>
+          <th>Orders</th>
+          <th>Lifetime sales</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in affiliates %}
+        <tr>
+          <td>{{ a.full_name or '—' }}</td>
+          <td>{{ a.email }}</td>
+          <td>
+            {% if a.affiliate_code %}
+            <a href="{{ url_for('listening_room', code=a.affiliate_code) }}">/listening-room/{{ a.affiliate_code }}</a>
+            {% else %}
+            <a href="{{ url_for('affiliate_landing', slug=a.affiliate_slug) }}">/{{ a.affiliate_slug }}</a>
+            {% endif %}
+          </td>
+          <td>{{ a.order_count }}</td>
+          <td>{{ format_money(a.lifetime_sales_cents) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel admin-creative-library admin-creative-command" id="creative-library-command" aria-labelledby="creative-library-heading">
+  <p class="admin-creative-eyebrow">Command centre</p>
+  <h2 class="admin-creative-command-title" id="creative-library-heading">Creative Library — Command centre</h2>
+  <p class="muted admin-creative-lede">
+    The content hub for Listening Room marketing: upload images and videos once and they appear instantly on <strong>every</strong> member&apos;s Creative library.
+    Affiliates download only — only admins upload or delete. Removing an asset here removes it for all members and deletes stored files.
+  </p>
+
+  <div class="admin-creative-upload-card">
+    <h3 class="admin-creative-upload-heading">Upload new asset</h3>
+    <form class="admin-creative-upload-form" method="post" action="{{ url_for('admin_creative_library_upload') }}" enctype="multipart/form-data">
+      <div class="admin-creative-fields">
+        <div class="admin-creative-title-section">
+          <label class="admin-creative-label">
+            <span>Title <span class="muted">(shown to members)</span></span>
+            <input type="text" name="title" placeholder="e.g. Sound Wave — spring campaign" maxlength="200" autocomplete="off">
+          </label>
+          <p class="muted small admin-creative-title-hint">Give each asset a clear label so members know how to use it.</p>
+        </div>
+        <label class="admin-creative-label">
+          <span>Tags <span class="muted">(optional)</span></span>
+          <input type="text" name="tags" placeholder="e.g. instagram, product, launch" maxlength="500" autocomplete="off">
+        </label>
+        <label class="admin-creative-label">
+          <span>Media file <span class="muted">(required)</span></span>
+          <input type="file" name="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" required>
+        </label>
+        <label class="admin-creative-label">
+          <span>Video thumbnail <span class="muted">(optional — for video files)</span></span>
+          <input type="file" name="thumbnail" accept="image/jpeg,image/png,image/webp,image/gif">
+        </label>
+      </div>
+      <button type="submit" class="btn primary">Upload to library</button>
+    </form>
+  </div>
+
+  <h3 class="admin-creative-grid-heading">Library assets</h3>
+  {% if creative_assets %}
+  <div class="admin-creative-grid" aria-label="Creative library assets">
+    {% for a in creative_assets %}
+    <article class="admin-creative-asset-card" data-asset-id="{{ a['id'] }}">
+      <div class="creative-library-preview admin-creative-preview" data-type="{{ a['asset_type'] }}">
+        {% if a['asset_type'] == 'video' %}
+          {% if a['thumbnail_path'] %}
+          <img src="{{ url_for('static', filename=a['thumbnail_path']) }}" alt="{{ (a['title'] or 'Video')|e }}" loading="lazy" decoding="async">
+          {% else %}
+          <video src="{{ url_for('static', filename=a['file_path']) }}" muted playsinline preload="metadata" aria-label="{{ (a['title'] or 'Video preview')|e }}"></video>
+          {% endif %}
+          <span class="admin-creative-type-badge admin-creative-type-video" aria-hidden="true">Video</span>
+        {% else %}
+          <img src="{{ url_for('static', filename=a['file_path']) }}" alt="{{ (a['title'] or 'Image')|e }}" loading="lazy" decoding="async">
+          <span class="admin-creative-type-badge admin-creative-type-image" aria-hidden="true">Image</span>
+        {% endif %}
+      </div>
+      <h4 class="admin-creative-asset-title">{{ a['title'] or 'Untitled asset' }}</h4>
+      <p class="admin-creative-asset-meta muted small"><span class="admin-creative-asset-id">#{{ a['id'] }}</span> · {{ (a['created_at'] or '')[:16] }}</p>
+      {% if a['tags'] %}
+      <p class="admin-creative-asset-tags muted small">{{ a['tags'] }}</p>
+      {% endif %}
+      <div class="admin-creative-asset-actions">
+        <form method="post" action="{{ url_for('admin_creative_library_delete', asset_id=a['id']) }}" class="admin-creative-delete-form" onsubmit="return confirm('Delete this asset from the library for all members? Files will be removed.');">
+          <button type="submit" class="btn admin-creative-delete-btn">Delete</button>
+        </form>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted admin-creative-empty">No assets in the library yet. Upload an image or video above.</p>
+  {% endif %}
+</section>
+
+<script>
+(function () {
+  var chartCountries, chartOrdersGeo, chartCities, chartDropoffs, chartConv;
+  var palette = ['#5c6b7a', '#8b7355', '#6b8e7a', '#7a6b8e', '#8e7a6b', '#4a6670', '#705a4a'];
+  var analyticsUrl = {{ url_for("api_admin_analytics") | tojson }};
+
+  function moneyFromCents(c) {
+    return '$' + (c / 100).toFixed(2);
+  }
+
+  function buildCharts(data) {
+    var ctxC = document.getElementById('admin-chart-countries');
+    var ctxO = document.getElementById('admin-chart-orders-geo');
+    var ctxCity = document.getElementById('admin-chart-cities');
+    var ctxD = document.getElementById('admin-chart-dropoffs');
+    var ctxV = document.getElementById('admin-chart-conversion');
+    if (!ctxC || !ctxO || !ctxCity || !ctxD || !ctxV) return;
+
+    var vc = data.visitor_countries_chart || [];
+    var cLabels = vc.slice(0, 14).map(function (x) { return x.country; });
+    var cVals = vc.slice(0, 14).map(function (x) { return x.visits; });
+
+    var oc = data.order_countries_chart || [];
+    var oLabels = oc.slice(0, 14).map(function (x) { return x.country; });
+    var oVals = oc.slice(0, 14).map(function (x) { return x.orders; });
+    var oRev = oc.slice(0, 14).map(function (x) { return x.revenue_cents; });
+
+    var cc = data.city_chart || [];
+    var cityLabels = cc.slice(0, 12).map(function (x) { return x.city; });
+    var cityVals = cc.slice(0, 12).map(function (x) { return x.visits; });
+
+    var dEntries = Object.entries(data.dropoffs || {}).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 12);
+    var dLabels = dEntries.map(function (x) { return x[0]; });
+    var dVals = dEntries.map(function (x) { return x[1]; });
+
+    if (chartCountries) chartCountries.destroy();
+    if (chartOrdersGeo) chartOrdersGeo.destroy();
+    if (chartCities) chartCities.destroy();
+    if (chartDropoffs) chartDropoffs.destroy();
+    if (chartConv) chartConv.destroy();
+
+    chartCountries = new Chart(ctxC, {
+      type: 'bar',
+      data: {
+        labels: cLabels,
+        datasets: [{ label: 'Sessions', data: cVals, backgroundColor: palette[0] }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    chartOrdersGeo = new Chart(ctxO, {
+      type: 'bar',
+      data: {
+        labels: oLabels,
+        datasets: [{ label: 'Orders', data: oVals, backgroundColor: palette[1] }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              afterLabel: function (ctx) {
+                var i = ctx.dataIndex;
+                if (oRev[i] != null) return 'Revenue: ' + moneyFromCents(oRev[i]);
+                return '';
+              },
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    chartCities = new Chart(ctxCity, {
+      type: 'bar',
+      data: {
+        labels: cityLabels,
+        datasets: [{ label: 'Sessions', data: cityVals, backgroundColor: palette[3] }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    chartDropoffs = new Chart(ctxD, {
+      type: 'bar',
+      data: {
+        labels: dLabels,
+        datasets: [{ label: 'Drop-offs', data: dVals, backgroundColor: palette[2] }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { precision: 0 } },
+        },
+      },
+    });
+
+    var conv = data.conversion || {};
+    var tot = conv.total || 0;
+    var done = conv.converted || 0;
+    var rest = Math.max(0, tot - done);
+    var statEl = document.getElementById('admin-conversion-stat');
+    if (statEl) {
+      statEl.textContent = done + ' / ' + tot + ' sessions converted (' + (conv.rate != null ? conv.rate : 0) + '%)';
+    }
+
+    chartConv = new Chart(ctxV, {
+      type: 'doughnut',
+      data: {
+        labels: ['Converted', 'Not converted'],
+        datasets: [{
+          data: [done, rest],
+          backgroundColor: [palette[2], 'rgba(0,0,0,0.12)'],
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+      },
+    });
+  }
+
+  function periodDays() {
+    var sel = document.getElementById('admin-analytics-period');
+    var v = sel ? parseInt(sel.value, 10) : 0;
+    return isNaN(v) ? 0 : v;
+  }
+
+  function refreshAnalytics() {
+    var q = periodDays() > 0 ? ('?days=' + periodDays()) : '';
+    fetch(analyticsUrl + q, { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        var el = document.getElementById('admin-analytics-live');
+        if (el) {
+          var p = (data.period_days === 0) ? 'All time' : ('Last ' + data.period_days + ' days');
+          el.textContent = p + ' · updated ' + new Date(data.updated_at).toLocaleString();
+        }
+        var devEl = document.getElementById('admin-analytics-devices');
+        if (devEl && data.devices) {
+          var parts = Object.keys(data.devices).map(function (k) {
+            return k + ': ' + data.devices[k];
+          });
+          devEl.textContent = parts.length ? ('Devices — ' + parts.join(' · ')) : '';
+        }
+        if (typeof Chart !== 'undefined') buildCharts(data);
+      })
+      .catch(function () {});
+  }
+
+  var periodSel = document.getElementById('admin-analytics-period');
+  if (periodSel) periodSel.addEventListener('change', refreshAnalytics);
+
+  refreshAnalytics();
+  setInterval(refreshAnalytics, 15000);
+})();
+
+fetch('{{ url_for("api_admin_summary") }}', { credentials: 'same-origin' })
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('admin-live').textContent =
+      d.orders + ' orders · ' + d.affiliates + ' members · updated ' + new Date(d.updated_at).toLocaleString();
+  });
+setInterval(() => {
+  fetch('{{ url_for("api_admin_summary") }}', { credentials: 'same-origin' })
+    .then(r => r.json())
+    .then(d => {
+      document.getElementById('admin-live').textContent =
+        d.orders + ' orders · ' + d.affiliates + ' members · updated ' + new Date(d.updated_at).toLocaleString();
+    });
+}, 20000);
+
+(function () {
+  var form = document.getElementById('admin-orders-search-form');
+  var input = document.getElementById('admin-orders-q');
+  if (!form || !input) return;
+  var t;
+  input.addEventListener('input', function () {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      form.submit();
+    }, 450);
+  });
+})();
+
+(function () {
+  var form = document.getElementById('admin-sa-search-form');
+  var input = document.getElementById('admin-sa-q');
+  if (!form || !input) return;
+  var t;
+  input.addEventListener('input', function () {
+    clearTimeout(t);
+    t = setTimeout(function () {
+      form.submit();
+    }, 450);
+  });
+})();
+
+document.querySelectorAll('.admin-sa-click-row[data-href]').forEach(function (tr) {
+  tr.style.cursor = 'pointer';
+  tr.addEventListener('click', function (e) {
+    if (e.target.closest('a, button, input, select, label')) return;
+    var href = tr.getAttribute('data-href');
+    if (href) window.location.href = href;
+  });
+});
+</script>
+{% endblock %}

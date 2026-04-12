@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Cart — Licorice Locker{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>Your cart</h1>
+  {% if affiliate %}
+  <p class="notice">You are shopping through <strong>{{ affiliate.full_name or affiliate.affiliate_slug }}</strong>&apos;s Listening Room. Checkout will credit their commission.</p>
+  {% endif %}
+
+  {% if not items %}
+  <p>Your cart is empty. <a href="{{ url_for('shop') }}">Continue shopping</a>.</p>
+  {% else %}
+  {% if cart_has_mini_series %}
+  <div class="cart-note" role="note">
+    <p><strong>Build your soundwave</strong></p>
+    <p>The Mini Series is modular — combine multiple pieces to create your own soundwave display.</p>
+  </div>
+  {% endif %}
+  <ul class="cart-list cart-list-detailed">
+    {% for it in items %}
+    <li class="cart-line">
+      <div class="cart-line-info">
+        <span class="cart-line-name">{{ it.product.name }}</span>
+        <span class="cart-line-unit muted small"><span data-nzd-cents="{{ it.product.price_cents }}">{{ format_money(it.product.price_cents) }}</span> each</span>
+      </div>
+      <form method="post" action="{{ url_for('cart_update') }}" class="cart-line-qty inline-form">
+        <input type="hidden" name="product_id" value="{{ it.product.id }}">
+        <label class="sr-only" for="cart-qty-{{ it.product.id }}">Quantity</label>
+        <input id="cart-qty-{{ it.product.id }}" type="number" name="quantity" value="{{ it.quantity }}" min="1" max="999" class="qty" required>
+        <button type="submit" class="btn">Update</button>
+      </form>
+      <span class="cart-line-total"><span data-nzd-cents="{{ it.line_cents }}">{{ format_money(it.line_cents) }}</span></span>
+      <form method="post" action="{{ url_for('cart_remove') }}" class="cart-line-remove">
+        <input type="hidden" name="product_id" value="{{ it.product.id }}">
+        <button type="submit" class="linkish">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="total-line">Subtotal: <strong><span data-nzd-cents="{{ total }}">{{ format_money(total) }}</span></strong></p>
+  <p class="muted small ll-currency-disclaimer">Prices in USD or EUR are estimates. Final payment is processed in NZD.</p>
+  <div class="actions-row">
+    <a class="btn primary" href="{{ url_for('checkout') }}">Proceed to checkout</a>
+    <a class="muted" href="{{ url_for('shop') }}">Continue shopping</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Staff sign in — Licorice Locker{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Staff sign in</h1>
+  <p class="muted">Administrator access only. Members use <strong>Listening Room sign in</strong> in the site footer (two-factor authentication).</p>
+  <form method="post" class="form-stack" action="{{ url_for('login') }}">
+    <label>Email
+      <input type="email" name="email" required autocomplete="username">
+    </label>
+    <label>Password
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+    <button type="submit" class="btn primary">Continue</button>
+  </form>
+  <p class="muted small">Demo: <code>admin@licoricelocker.local</code> / <code>admin123</code></p>
+</section>
+{% endblock %}

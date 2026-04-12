@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Built from sound, shaped by design — Licorice Locker{% endblock %}
+{% block body_class %}about-story{% endblock %}
+{% block content %}
+<section class="about about-split" aria-labelledby="about-hero-title">
+  <figure class="about-founder">
+    <img
+      src="{{ url_for('static', filename='about-founder.png') }}"
+      alt="Joshua French, founder of Licorice Locker, in profile wearing a trench coat in an architectural build-out space."
+      width="682"
+      height="1024"
+      loading="eager"
+      decoding="async"
+      fetchpriority="high"
+      class="about-founder-img"
+      sizes="(min-width: 768px) min(38vw, 520px), (min-width: 480px) 92vw, 100vw"
+    >
+    <figcaption class="about-founder-caption">This is me — Joshua French, founder</figcaption>
+  </figure>
+
+  <div class="about-copy">
+    <div class="section hero">
+      <h1 id="about-hero-title">Built from sound,<br />shaped by design</h1>
+    </div>
+
+    <div class="section">
+      <p>Licorice Locker started with two things I’ve always cared about — music and space.</p>
+      <p><strong>Vinyl, specifically.</strong></p>
+      <p>Not just how it sounds, but how it feels. The weight. The ritual. The presence it has in a room.</p>
+    </div>
+
+    <div class="section">
+      <h2 id="about-arch">Architecture changed how I see</h2>
+      <p>I studied architecture to understand how people experience space.</p>
+      <p>Light. Material. Proportion.</p>
+      <p>How objects sit within a room — and quietly shape how it feels.</p>
+      <p>That thinking never left. It just became smaller. More personal.</p>
+    </div>
+
+    <div class="section highlight">
+      <h2 id="about-origin">Where it started</h2>
+      <p>The first soundwave piece wasn’t planned.</p>
+      <p>I made it at a time where I needed an outlet — something to focus on, something to build.</p>
+      <p>Then I listed it on Facebook Marketplace.</p>
+      <p><strong>It sold.</strong></p>
+      <p>Then another did.</p>
+      <p>That was enough to realise this could become something.</p>
+    </div>
+
+    <div class="section">
+      <h2 id="about-music">Music became the brief</h2>
+      <p>Vinyl isn’t just something to play.</p>
+      <p>It’s something to live with.</p>
+      <p>So I started designing pieces that let it exist in a space the same way art does.</p>
+    </div>
+
+    <div class="section">
+      <h2 id="about-presence">Designed for presence</h2>
+      <p>Every piece is designed to do more than hold a record.</p>
+      <p>It creates a moment.</p>
+      <p>Minimal, but not empty.</p>
+      <p>Functional, but intentional.</p>
+      <p>Closer to architecture than product.</p>
+    </div>
+
+    <div class="section">
+      <h2 id="about-audience">For people with taste</h2>
+      <p>This is for people who care about what they surround themselves with.</p>
+      <p>People who see music as part of their environment — not separate from it.</p>
+    </div>
+
+    <div class="section">
+      <h2 id="about-future">Still building</h2>
+      <p>Licorice Locker is evolving into something bigger.</p>
+      <p>Objects. Spaces. Systems.</p>
+      <p>All sitting at the intersection of music and design.</p>
+    </div>
+
+    <div class="section about-listening">
+      <p>
+        For those who want to be part of it —
+        <a href="{{ url_for('listening_room_program') }}">the Listening Room is open</a>.
+      </p>
+    </div>
+
+    <div class="section signoff">
+      <p>— Joshua French</p>
+      <p>Founder, Licorice Locker</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
