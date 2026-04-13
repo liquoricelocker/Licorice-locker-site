@@ -3794,6 +3794,46 @@ body.affiliate-terms-modal-open {
   border: none;
 }
 
+.page-shop .product-card .inline-form.shop-product-buy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.shop-buy-dual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.shop-buy-now-btn {
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: clamp(0.9rem, 2vw, 1rem);
+  padding: 0.55rem 1.15rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: rgba(25, 23, 36, 0.06);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.shop-buy-now-btn:hover {
+  background: rgba(25, 23, 36, 0.1);
+}
+
+.shop-buy-now-btn:active {
+  transform: scale(0.98);
+}
+
+.shop-buy-now-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* ——— The Listening Room (public program / conversion page) ——— */
 body.listening-room-program .main {
   max-width: none;

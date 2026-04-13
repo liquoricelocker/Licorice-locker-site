@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Checkout cancelled — Licorice Locker{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Checkout cancelled</h1>
+  <p class="muted">No payment was taken. Your cart is unchanged — you can keep browsing or try again when you are ready.</p>
+  <p><a class="btn primary" href="{{ url_for('shop') }}">Back to shop</a></p>
+</section>
+{% endblock %}

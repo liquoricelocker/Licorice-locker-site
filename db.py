@@ -396,6 +396,15 @@ def _migrate_order_columns(db: sqlite3.Connection) -> None:
         db.execute("ALTER TABLE orders ADD COLUMN fulfillment_status TEXT NOT NULL DEFAULT 'paid'")
     if "customer_phone" not in cols:
         db.execute("ALTER TABLE orders ADD COLUMN customer_phone TEXT NOT NULL DEFAULT ''")
+    if "stripe_checkout_session_id" not in cols:
+        db.execute("ALTER TABLE orders ADD COLUMN stripe_checkout_session_id TEXT")
+    db.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_stripe_checkout_session
+        ON orders(stripe_checkout_session_id)
+        WHERE stripe_checkout_session_id IS NOT NULL AND length(trim(stripe_checkout_session_id)) > 0
+        """
+    )
 
 
 def _backfill_order_columns(db: sqlite3.Connection) -> None:

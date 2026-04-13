@@ -126,6 +126,11 @@
     var form = e.target;
     if (!form || form.tagName !== 'FORM' || !cartAddAction(form)) return;
     if (form.getAttribute('data-no-ajax') === '1') return;
+    var sub = e.submitter;
+    if (sub && sub.hasAttribute('formaction')) {
+      var fa = (sub.getAttribute('formaction') || '').toLowerCase();
+      if (fa.indexOf('/cart/add') === -1) return;
+    }
     e.preventDefault();
     var fd = new FormData(form);
     fd.set('ajax', '1');
