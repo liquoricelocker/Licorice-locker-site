@@ -7,3 +7,4 @@ pyotp>=2.9.0
 qrcode[pil]>=7.4.2
 Pillow>=10.0.0
 gunicorn
+resend>=2.0.0

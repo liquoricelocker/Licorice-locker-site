@@ -2,6 +2,11 @@ from __future__ import annotations
 
 """Licorice Locker — Flask web app."""
 
+from dotenv import load_dotenv
+
+# Load .env before any imports that read os.environ at module load (e.g. db.py).
+load_dotenv()
+
 import copy
 import json
 import os
@@ -15,9 +20,17 @@ from pathlib import Path
 from calendar import month_name, monthrange
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
-
-from dotenv import load_dotenv
-from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Flask,
+    flash,
+    has_request_context,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -45,9 +58,8 @@ from mail import (
     send_order_confirmation,
     send_order_fulfilled_notification,
     send_password_reset_email,
+    send_resend_post_purchase_emails,
 )
-
-load_dotenv()
 
 
 def _env_secret_clean(key: str, *fallback_keys: str) -> str:
@@ -1521,17 +1533,57 @@ _STRIPE_SHIPPING_COUNTRIES = [
 
 
 def _stripe_checkout_base_url() -> str:
-    """Public origin for Stripe redirects. Prefer SITE_URL; then Railway's domain; then request host."""
+    """Public origin for Stripe success/cancel URLs.
+
+    Uses the same host the customer used to start checkout when possible, so a
+    mis-set or not-yet-live SITE_URL (e.g. custom domain without DNS) does not
+    send them to an unreachable host after Stripe.
+
+    Precedence:
+    1. STRIPE_PUBLIC_BASE_URL or STRIPE_CHECKOUT_BASE_URL — explicit override.
+    2. Request Host / X-Forwarded-Host (non-local only) — matches the live tab URL.
+    3. SITE_URL — canonical fallback when no usable request host.
+    4. RAILWAY_PUBLIC_DOMAIN — platform default.
+    5. request.host_url — last resort.
+    """
+    explicit = (
+        os.environ.get("STRIPE_PUBLIC_BASE_URL") or os.environ.get("STRIPE_CHECKOUT_BASE_URL") or ""
+    ).strip().rstrip("/")
+    if explicit:
+        return explicit
+
+    if has_request_context():
+        fwd = (request.headers.get("X-Forwarded-Host") or "").split(",")[0].strip()
+        host = fwd or (request.host or "").split(",")[0].strip()
+        if host:
+            h = host.lower()
+            if h not in ("localhost", "127.0.0.1") and not h.startswith("127.") and not h.endswith(
+                ".local"
+            ):
+                proto = (
+                    (request.headers.get("X-Forwarded-Proto") or request.scheme or "https")
+                    .split(",")[0]
+                    .strip()
+                    .lower()
+                )
+                if proto not in ("http", "https"):
+                    proto = "https"
+                return f"{proto}://{host}".rstrip("/")
+
     base = (os.environ.get("SITE_URL") or "").strip().rstrip("/")
     if base:
         return base
+
     domain = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip()
     if domain:
         domain = domain.lstrip("/")
         if domain.lower().startswith("http://") or domain.lower().startswith("https://"):
             return domain.rstrip("/")
         return f"https://{domain}".rstrip("/")
-    return (request.host_url or "").rstrip("/")
+
+    if has_request_context():
+        return (request.host_url or "").rstrip("/")
+    return ""
 
 
 def _stripe_process_paid_return(csid: str):
@@ -1826,9 +1878,11 @@ def _stripe_process_paid_return(csid: str):
                 refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
             lines = order_items_lines(conn, oid)
 
-    receipt_ok = send_order_confirmation(
-        email, order_number, lines, database.format_money(total_with_shipping)
-    )
+    receipt_ok = send_resend_post_purchase_emails(oid)
+    if not receipt_ok:
+        receipt_ok = send_order_confirmation(
+            email, order_number, lines, database.format_money(total_with_shipping)
+        )
     if receipt_ok:
         with database.get_db() as conn:
             database.mark_order_receipt_sent(conn, oid)
