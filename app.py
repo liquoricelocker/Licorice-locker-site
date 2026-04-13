@@ -48,7 +48,40 @@ from mail import (
 
 load_dotenv()
 
+
+def _env_secret_clean(key: str, *fallback_keys: str) -> str:
+    """Read env var, strip whitespace/newlines, optional wrapping quotes (common copy-paste issues)."""
+    raw = os.environ.get(key) or ""
+    for fk in fallback_keys:
+        if not str(raw).strip():
+            raw = os.environ.get(fk) or ""
+        else:
+            break
+    s = str(raw).strip().replace("\r", "").replace("\n", "")
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "'\"":
+        s = s[1:-1].strip()
+    return s
+
+
+def _stripe_secret_key() -> str:
+    return _env_secret_clean("STRIPE_SECRET_KEY", "STRIPE_API_KEY", "STRIPE_SECRET")
+
+
+def _stripe_publishable_key() -> str:
+    return _env_secret_clean(
+        "STRIPE_PUBLIC_KEY",
+        "STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLEKEY",
+    )
+
+
 app = Flask(__name__)
+
+# Railway (and similar) sit behind a reverse proxy; fixes request.host_url / scheme for Stripe return URLs.
+if (os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("TRUST_PROXY") or "").strip():
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1, x_prefix=1)
 
 AVATAR_UPLOAD_DIR = Path(__file__).resolve().parent / "static" / "uploads" / "avatars"
 MAX_AVATAR_UPLOAD_BYTES = 3 * 1024 * 1024
@@ -589,7 +622,7 @@ def inject_footer() -> Dict[str, Any]:
 
 @app.context_processor
 def inject_stripe_public() -> Dict[str, Any]:
-    return {"stripe_public_key": (os.environ.get("STRIPE_PUBLIC_KEY") or "").strip()}
+    return {"stripe_public_key": _stripe_publishable_key()}
 
 
 @app.context_processor
@@ -1301,16 +1334,22 @@ _STRIPE_SHIPPING_COUNTRIES = [
 
 
 def _stripe_checkout_base_url() -> str:
-    """Public origin for Stripe redirects (set SITE_URL in production, e.g. https://licoricelocker.com)."""
+    """Public origin for Stripe redirects. Prefer SITE_URL; then Railway's domain; then request host."""
     base = (os.environ.get("SITE_URL") or "").strip().rstrip("/")
     if base:
         return base
+    domain = (os.environ.get("RAILWAY_PUBLIC_DOMAIN") or "").strip()
+    if domain:
+        domain = domain.lstrip("/")
+        if domain.lower().startswith("http://") or domain.lower().startswith("https://"):
+            return domain.rstrip("/")
+        return f"https://{domain}".rstrip("/")
     return (request.host_url or "").rstrip("/")
 
 
 def _stripe_process_paid_return(csid: str):
     """Verify Stripe Checkout session, record order once, then redirect to /shop with session banner (PRG)."""
-    secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
+    secret = _stripe_secret_key()
     if not secret:
         flash("Payments are not configured.", "error")
         return redirect(url_for("shop"), code=303)
@@ -1626,7 +1665,7 @@ def _stripe_process_paid_return(csid: str):
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
-    secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
+    secret = _stripe_secret_key()
     if not secret:
         flash("Online payments are not configured.", "error")
         return redirect(request.referrer or url_for("shop"))
@@ -1734,7 +1773,7 @@ def stripe_checkout_cancel():
 
 def _checkout_start_stripe_redirect() -> Any:
     """Create Stripe Checkout for the current session cart; customer completes address & payment on Stripe."""
-    secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
+    secret = _stripe_secret_key()
     if not secret:
         flash("Online payments are not configured.", "error")
         return redirect(url_for("checkout"))
@@ -1852,7 +1891,7 @@ def checkout():
     if request.method == "POST":
         return _checkout_start_stripe_redirect()
 
-    payments_ready = bool((os.environ.get("STRIPE_SECRET_KEY") or "").strip())
+    payments_ready = bool(_stripe_secret_key())
     return render_template(
         "checkout.html",
         items=items,
