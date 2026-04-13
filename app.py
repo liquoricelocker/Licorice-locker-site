@@ -1007,6 +1007,19 @@ def product_detail(slug: str):
 
 @app.route("/shop")
 def shop():
+    if (request.args.get("success") or "").strip().lower() == "true":
+        csid = (request.args.get("session_id") or "").strip()
+        if not csid:
+            flash("We could not confirm your payment session. Contact us if you were charged.", "error")
+            return redirect(url_for("shop"), code=303)
+        return _stripe_process_paid_return(csid)
+
+    if (request.args.get("cancelled") or "").strip().lower() == "true":
+        flash("Checkout cancelled — your cart is unchanged.", "info")
+        return redirect(url_for("shop"), code=303)
+
+    shop_checkout_success = session.pop("shop_checkout_success", None)
+
     with database.get_db() as conn:
         products = database.list_products(conn)
     sound_wave_product = next((p for p in products if p["slug"] == "sound-wave"), None)
@@ -1023,6 +1036,7 @@ def shop():
         melody_product=melody_product,
         allegro_product=allegro_product,
         format_money=database.format_money,
+        shop_checkout_success=shop_checkout_success,
     )
 
 
@@ -1294,124 +1308,23 @@ def _stripe_checkout_base_url() -> str:
     return (request.host_url or "").rstrip("/")
 
 
-@app.route("/create-checkout-session", methods=["POST"])
-def create_checkout_session():
-    secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
-    if not secret:
-        flash("Online payments are not configured.", "error")
-        return redirect(request.referrer or url_for("shop"))
-    stripe.api_key = secret
-
-    try:
-        pid = int(request.form.get("product_id", 0))
-    except (TypeError, ValueError):
-        pid = 0
-    try:
-        qty = max(1, min(999, int(request.form.get("quantity", 1))))
-    except (TypeError, ValueError):
-        qty = 1
-
-    with database.get_db() as conn:
-        p = database.product_by_id(conn, pid)
-    if not p or not database.product_add_to_cart_enabled(p):
-        flash("This product is not available for purchase.", "error")
-        return redirect(request.referrer or url_for("shop"))
-
-    unit_amount = int(p["price_cents"])
-    if unit_amount < 50:
-        flash("This product cannot be charged online. Contact us to order.", "error")
-        return redirect(request.referrer or url_for("shop"))
-
-    try:
-        default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
-    except ValueError:
-        default_shipping_cents = 0
-
-    affiliate_slug = (request.cookies.get("licorice_affiliate_slug") or "").strip()
-    guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
-
-    base = _stripe_checkout_base_url()
-    success_path = url_for("stripe_checkout_success", _external=False)
-    cancel_path = url_for("stripe_checkout_cancel", _external=False)
-    success_url = f"{base}{success_path}?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{base}{cancel_path}"
-
-    slug_val = str(p["slug"] or "").strip()
-    line_items: List[Dict[str, Any]] = [
-        {
-            "price_data": {
-                "currency": "nzd",
-                "product_data": {
-                    "name": str(p["name"] or "Product"),
-                    "metadata": {"product_id": str(p["id"]), "slug": slug_val},
-                },
-                "unit_amount": unit_amount,
-            },
-            "quantity": qty,
-        }
-    ]
-    if default_shipping_cents > 0:
-        line_items.append(
-            {
-                "price_data": {
-                    "currency": "nzd",
-                    "product_data": {"name": "Shipping"},
-                    "unit_amount": default_shipping_cents,
-                },
-                "quantity": 1,
-            }
-        )
-
-    try:
-        checkout_session = stripe.checkout.Session.create(
-            line_items=line_items,
-            mode="payment",
-            success_url=success_url,
-            cancel_url=cancel_url,
-            shipping_address_collection={"allowed_countries": _STRIPE_SHIPPING_COUNTRIES},
-            phone_number_collection={"enabled": True},
-            metadata={
-                "product_id": str(p["id"]),
-                "quantity": str(qty),
-                "shipping_cents": str(default_shipping_cents),
-                "affiliate_slug": affiliate_slug,
-                "guest_session_id": guest_session_id,
-            },
-        )
-    except stripe.error.StripeError as e:
-        flash(f"Payment could not be started: {getattr(e, 'user_message', None) or str(e)}", "error")
-        return redirect(request.referrer or url_for("shop"))
-
-    url = checkout_session.url
-    if not url:
-        flash("Payment could not be started.", "error")
-        return redirect(request.referrer or url_for("shop"))
-    return redirect(url, code=303)
-
-
-@app.route("/checkout/stripe/success")
-@app.route("/success")
-def stripe_checkout_success():
+def _stripe_process_paid_return(csid: str):
+    """Verify Stripe Checkout session, record order once, then redirect to /shop with session banner (PRG)."""
     secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
     if not secret:
         flash("Payments are not configured.", "error")
-        return redirect(url_for("shop"))
+        return redirect(url_for("shop"), code=303)
     stripe.api_key = secret
 
-    csid = (request.args.get("session_id") or "").strip()
-    if not csid:
-        flash("Missing payment session.", "error")
-        return redirect(url_for("shop"))
-
     try:
-        cs = stripe.checkout.Session.retrieve(csid, expand=["line_items"])
+        cs = stripe.checkout.Session.retrieve(csid)
     except stripe.error.StripeError:
         flash("Could not verify your payment. Contact us with your receipt.", "error")
-        return redirect(url_for("shop"))
+        return redirect(url_for("shop"), code=303)
 
     if (cs.payment_status or "") != "paid":
         flash("Payment was not completed.", "error")
-        return redirect(url_for("shop"))
+        return redirect(url_for("shop"), code=303)
 
     with database.get_db() as conn:
         existing = conn.execute(
@@ -1423,13 +1336,16 @@ def stripe_checkout_success():
                 "SELECT receipt_sent, total_cents FROM orders WHERE id = ?",
                 (int(existing["id"]),),
             ).fetchone()
-            return render_template(
-                "order_done.html",
-                order_number=str(existing["order_number"]),
-                format_money=database.format_money,
-                total=int((row or existing)["total_cents"] or 0),
-                receipt_sent=bool(row and row["receipt_sent"]),
-            )
+            total = int((row or existing)["total_cents"] or 0)
+            session["shop_checkout_success"] = {
+                "order_number": str(existing["order_number"]),
+                "total_cents": total,
+                "receipt_sent": bool(row and row["receipt_sent"]),
+                "headline": "Your order is already confirmed.",
+                "detail": "Thanks again — we have your order on record.",
+                "is_new_order": False,
+            }
+            return redirect(url_for("shop"), code=303)
 
     raw_cs = cs.to_dict()
     meta = dict(raw_cs.get("metadata") or {})
@@ -1450,7 +1366,7 @@ def stripe_checkout_success():
         p = database.product_by_id(conn, pid)
     if not p:
         flash("Order could not be recorded (product missing). Contact us.", "error")
-        return redirect(url_for("shop"))
+        return redirect(url_for("shop"), code=303)
 
     unit = int(p["price_cents"])
     subtotal_cents = unit * qty
@@ -1458,7 +1374,7 @@ def stripe_checkout_success():
     paid_total = int(cs.amount_total or 0)
     if paid_total != expected_total:
         flash("Payment amount mismatch. Contact us with your Stripe receipt.", "error")
-        return redirect(url_for("shop"))
+        return redirect(url_for("shop"), code=303)
 
     affiliate_slug = (meta.get("affiliate_slug") or "").strip()
     guest_session_id = (meta.get("guest_session_id") or "").strip()
@@ -1484,7 +1400,7 @@ def stripe_checkout_success():
 
     if not email or not line1 or not city or not postal:
         flash("Order could not be recorded (incomplete details). Contact us.", "error")
-        return redirect(url_for("shop"))
+        return redirect(url_for("shop"), code=303)
 
     parts = cust_name.split(None, 1) if cust_name else []
     first = parts[0] if parts else "Customer"
@@ -1578,24 +1494,131 @@ def stripe_checkout_success():
     if receipt_ok:
         with database.get_db() as conn:
             database.mark_order_receipt_sent(conn, oid)
-        flash("Thank you — your order is confirmed.", "ok")
     else:
-        flash("Order recorded, but the confirmation email could not be sent. We will follow up.", "error")
+        flash("Order confirmed, but the confirmation email could not be sent. We will follow up.", "error")
 
-    return render_template(
-        "order_done.html",
-        order_number=order_number,
-        format_money=database.format_money,
-        total=total_with_shipping,
-        receipt_sent=receipt_ok,
+    detail = (
+        "A confirmation email is on its way."
+        if receipt_ok
+        else "We will email you when your dispatch details are ready."
     )
+    session["shop_checkout_success"] = {
+        "order_number": order_number,
+        "total_cents": total_with_shipping,
+        "receipt_sent": receipt_ok,
+        "headline": "Your record display is on its way.",
+        "detail": detail,
+        "is_new_order": True,
+    }
+    return redirect(url_for("shop"), code=303)
+
+
+@app.route("/create-checkout-session", methods=["POST"])
+def create_checkout_session():
+    secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
+    if not secret:
+        flash("Online payments are not configured.", "error")
+        return redirect(request.referrer or url_for("shop"))
+    stripe.api_key = secret
+
+    try:
+        pid = int(request.form.get("product_id", 0))
+    except (TypeError, ValueError):
+        pid = 0
+    qty = 1
+
+    with database.get_db() as conn:
+        p = database.product_by_id(conn, pid)
+    if not p or not database.product_add_to_cart_enabled(p):
+        flash("This product is not available for purchase.", "error")
+        return redirect(request.referrer or url_for("shop"))
+
+    unit_amount = int(p["price_cents"])
+    if unit_amount < 50:
+        flash("This product cannot be charged online. Contact us to order.", "error")
+        return redirect(request.referrer or url_for("shop"))
+
+    try:
+        default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
+    except ValueError:
+        default_shipping_cents = 0
+
+    affiliate_slug = (request.cookies.get("licorice_affiliate_slug") or "").strip()
+    guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
+
+    base = _stripe_checkout_base_url()
+    shop_path = url_for("shop", _external=False)
+    success_url = f"{base}{shop_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{base}{shop_path}?cancelled=true"
+
+    slug_val = str(p["slug"] or "").strip()
+    line_items: List[Dict[str, Any]] = [
+        {
+            "price_data": {
+                "currency": "nzd",
+                "product_data": {
+                    "name": str(p["name"] or "Product"),
+                    "metadata": {"product_id": str(p["id"]), "slug": slug_val},
+                },
+                "unit_amount": unit_amount,
+            },
+            "quantity": qty,
+        }
+    ]
+    if default_shipping_cents > 0:
+        line_items.append(
+            {
+                "price_data": {
+                    "currency": "nzd",
+                    "product_data": {"name": "Shipping"},
+                    "unit_amount": default_shipping_cents,
+                },
+                "quantity": 1,
+            }
+        )
+
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            line_items=line_items,
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            shipping_address_collection={"allowed_countries": _STRIPE_SHIPPING_COUNTRIES},
+            phone_number_collection={"enabled": True},
+            metadata={
+                "product_id": str(p["id"]),
+                "quantity": str(qty),
+                "shipping_cents": str(default_shipping_cents),
+                "affiliate_slug": affiliate_slug,
+                "guest_session_id": guest_session_id,
+            },
+        )
+    except stripe.error.StripeError as e:
+        flash(f"Payment could not be started: {getattr(e, 'user_message', None) or str(e)}", "error")
+        return redirect(request.referrer or url_for("shop"))
+
+    url = checkout_session.url
+    if not url:
+        flash("Payment could not be started.", "error")
+        return redirect(request.referrer or url_for("shop"))
+    return redirect(url, code=303)
+
+
+@app.route("/checkout/stripe/success")
+@app.route("/success")
+def stripe_checkout_success():
+    """Legacy URLs: same flow as returning to /shop after Stripe (bookmarkable)."""
+    csid = (request.args.get("session_id") or "").strip()
+    if not csid:
+        flash("Missing payment session.", "error")
+        return redirect(url_for("shop"), code=303)
+    return redirect(url_for("shop", success="true", session_id=csid), code=303)
 
 
 @app.route("/checkout/stripe/cancel")
 @app.route("/cancel")
 def stripe_checkout_cancel():
-    flash("Checkout was cancelled. Your cart is unchanged.", "error")
-    return render_template("stripe_checkout_cancel.html")
+    return redirect(url_for("shop", cancelled="true"), code=303)
 
 
 @app.route("/checkout", methods=["GET", "POST"])
