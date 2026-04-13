@@ -19,6 +19,31 @@
   <ul class="cart-list cart-list-detailed">
     {% for it in items %}
     <li class="cart-line">
+      <div class="cart-line-thumb">
+        {% set slug = it.product.slug %}
+        {% set banner = product_checkout_banner(slug) %}
+        {% if banner %}
+        <img
+          class="cart-line-img"
+          src="{{ url_for('static', filename=banner) }}"
+          alt="{{ it.product.name }}"
+          width="80"
+          height="80"
+          loading="lazy"
+          decoding="async"
+        >
+        {% else %}
+        <img
+          class="cart-line-img cart-line-img--svg"
+          src="{{ url_for('static', filename='products/' ~ slug ~ '.svg') }}"
+          alt="{{ it.product.name }}"
+          width="80"
+          height="80"
+          loading="lazy"
+          decoding="async"
+        >
+        {% endif %}
+      </div>
       <div class="cart-line-info">
         <span class="cart-line-name">{{ it.product.name }}</span>
         <span class="cart-line-unit muted small"><span data-nzd-cents="{{ it.product.price_cents }}">{{ format_money(it.product.price_cents) }}</span> each</span>

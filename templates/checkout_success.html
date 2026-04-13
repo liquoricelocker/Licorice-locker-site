@@ -47,7 +47,7 @@
     </div>
     {% endif %}
   </div>
-  <h1 id="checkout-success-heading" class="checkout-success-title">Congratulations on your purchase</h1>
+  <h1 id="checkout-success-heading" class="checkout-success-title">Congratulations on your order</h1>
   <p class="checkout-success-meta muted">Order <strong>{{ order_number }}</strong> · {{ format_money(total_cents) }}</p>
   {% if detail %}
   <p class="checkout-success-detail">{{ detail }}</p>
@@ -58,7 +58,7 @@
   <p class="muted small">If you do not see a confirmation email shortly, check spam or contact us — your order is still on file.</p>
   {% endif %}
   <p class="checkout-success-actions">
-    <a class="btn primary" href="{{ url_for('shop') }}">Back to shop</a>
+    <a class="btn primary" href="{{ url_for('shop') }}">Back to site</a>
   </p>
 </section>
 {% if is_new_order %}

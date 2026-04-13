@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Licorice Locker — Flask web app."""
 
+import copy
 import json
 import os
 import secrets
@@ -331,14 +332,26 @@ def inject_header_home() -> Dict[str, Any]:
 
 
 def _session_cart_total_qty() -> int:
-    cart = session.get("cart") or {}
-    cart_qty = 0
-    for q in cart.values():
-        try:
-            cart_qty += max(0, int(q))
-        except (TypeError, ValueError):
-            pass
-    return cart_qty
+    raw = session.get("cart")
+    if isinstance(raw, list):
+        cart_qty = 0
+        for row in raw:
+            if not isinstance(row, dict):
+                continue
+            try:
+                cart_qty += max(0, int(row.get("quantity", 0)))
+            except (TypeError, ValueError):
+                pass
+        return cart_qty
+    if isinstance(raw, dict):
+        cart_qty = 0
+        for q in raw.values():
+            try:
+                cart_qty += max(0, int(q))
+            except (TypeError, ValueError):
+                pass
+        return cart_qty
+    return 0
 
 
 @app.context_processor
@@ -389,6 +402,100 @@ def _order_success_product_rows(conn: sqlite3.Connection, order_id: int) -> List
             }
         )
     return out
+
+
+def _cart_migrate_dict_to_list(d: Dict[str, Any], conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for pid_s, qty_raw in (d or {}).items():
+        try:
+            pid = int(pid_s)
+            qty = int(qty_raw)
+        except (TypeError, ValueError):
+            continue
+        if qty < 1:
+            continue
+        p = database.product_by_id(conn, pid)
+        if not p or not database.product_add_to_cart_enabled(p):
+            continue
+        slug = str(p["slug"] or "").strip().lower()
+        rows.append(
+            {
+                "product_id": pid,
+                "quantity": min(999, qty),
+                "name": str(p["name"] or "Product"),
+                "price_cents": int(p["price_cents"]),
+                "image": _product_success_image_static(slug),
+                "slug": slug,
+            }
+        )
+    rows.sort(key=lambda x: x["product_id"])
+    return rows
+
+
+def _cart_merge_duplicate_lines(lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_pid: Dict[int, Dict[str, Any]] = {}
+    for row in lines:
+        pid = int(row["product_id"])
+        q = int(row.get("quantity", 1))
+        if pid in by_pid:
+            by_pid[pid]["quantity"] = min(999, int(by_pid[pid]["quantity"]) + q)
+        else:
+            by_pid[pid] = dict(row)
+    return [by_pid[k] for k in sorted(by_pid.keys())]
+
+
+def _cart_get_list(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
+    """Normalized cart: list of {product_id, quantity, name, price_cents, image, slug}. Migrates legacy dict cart."""
+    raw = session.get("cart")
+    if not raw:
+        return []
+    if isinstance(raw, dict):
+        lst = _cart_migrate_dict_to_list(raw, conn)
+        session["cart"] = lst
+        session.modified = True
+        return lst
+    if not isinstance(raw, list):
+        session["cart"] = []
+        session.modified = True
+        return []
+    out: List[Dict[str, Any]] = []
+    dropped = False
+    for entry in raw:
+        if not isinstance(entry, dict):
+            dropped = True
+            continue
+        try:
+            pid = int(entry.get("product_id") or entry.get("id") or 0)
+        except (TypeError, ValueError):
+            dropped = True
+            continue
+        if pid < 1:
+            dropped = True
+            continue
+        p = database.product_by_id(conn, pid)
+        if not p or not database.product_add_to_cart_enabled(p):
+            dropped = True
+            continue
+        try:
+            q = max(1, min(999, int(entry.get("quantity", 1))))
+        except (TypeError, ValueError):
+            q = 1
+        slug = str(p["slug"] or "").strip().lower()
+        out.append(
+            {
+                "product_id": pid,
+                "quantity": q,
+                "name": str(p["name"] or "Product"),
+                "price_cents": int(p["price_cents"]),
+                "image": _product_success_image_static(slug),
+                "slug": slug,
+            }
+        )
+    merged = _cart_merge_duplicate_lines(out)
+    if merged != raw or dropped or len(merged) != len(raw):
+        session["cart"] = merged
+        session.modified = True
+    return merged
 
 
 @app.context_processor
@@ -618,28 +725,14 @@ def order_items_lines(conn: sqlite3.Connection, order_id: int) -> str:
 
 
 def _cart_line_items(conn: sqlite3.Connection) -> Tuple[List[Dict[str, Any]], int]:
-    products = {str(p["id"]): p for p in database.list_products(conn)}
-    cart = dict(session.get("cart") or {})
-    dirty = False
-    for pid_s in list(cart.keys()):
-        p = products.get(pid_s)
-        if not p or not database.product_add_to_cart_enabled(p):
-            cart.pop(pid_s, None)
-            dirty = True
-    if dirty:
-        session["cart"] = cart
+    lst = _cart_get_list(conn)
     items: List[Dict[str, Any]] = []
     total = 0
-    for pid_s, qty_raw in cart.items():
-        p = products.get(pid_s)
-        if not p:
+    for row in lst:
+        p = database.product_by_id(conn, row["product_id"])
+        if not p or not database.product_add_to_cart_enabled(p):
             continue
-        try:
-            qty = int(qty_raw)
-        except (TypeError, ValueError):
-            continue
-        if qty < 1:
-            continue
+        qty = int(row["quantity"])
         line = int(p["price_cents"]) * qty
         total += line
         items.append({"product": p, "quantity": qty, "line_cents": line})
@@ -1107,20 +1200,18 @@ def shop():
     )
 
 
+@app.route("/success")
 @app.route("/checkout/success")
 def checkout_success():
     """Stripe redirects here after payment; fulfillment runs once, then a dedicated success screen."""
-    if (request.args.get("success") or "").strip().lower() == "true":
-        csid = (request.args.get("session_id") or "").strip()
-        if csid:
-            return _stripe_process_paid_return(csid)
-        flash("We could not confirm your payment session. Contact us if you were charged.", "error")
-        return redirect(url_for("shop"), code=303)
+    csid = (request.args.get("session_id") or "").strip()
+    if csid:
+        return _stripe_process_paid_return(csid)
     payload = session.pop("checkout_success_view", None)
     if not payload:
         return redirect(url_for("shop"), code=303)
     products = payload.get("products") or []
-    return render_template(
+    html = render_template(
         "checkout_success.html",
         format_money=database.format_money,
         order_number=str(payload.get("order_number") or ""),
@@ -1130,10 +1221,16 @@ def checkout_success():
         is_new_order=bool(payload.get("is_new_order")),
         products=products,
     )
+    session.pop("cart", None)
+    session.modified = True
+    return html
 
 
 @app.route("/cart")
 def cart_view():
+    if (request.args.get("returned") or "").strip().lower() in ("1", "true", "yes"):
+        flash("You're back from checkout — your cart is unchanged.", "info")
+        return redirect(url_for("cart_view"), code=303)
     with database.get_db() as conn:
         items, total = _cart_line_items(conn)
     affiliate_slug = request.cookies.get("licorice_affiliate_slug")
@@ -1160,22 +1257,19 @@ def _cart_add_wants_json() -> bool:
     )
 
 
-def _cart_slug_counts(conn: sqlite3.Connection, cart: Dict[str, Any]) -> Dict[str, int]:
+def _cart_slug_counts_from_lines(lines: List[Dict[str, Any]]) -> Dict[str, int]:
     counts: Dict[str, int] = {}
-    for pid_s, qty_raw in (cart or {}).items():
+    for row in lines or []:
+        slug = (row.get("slug") or "").strip().lower()
+        if not slug:
+            continue
         try:
-            pid = int(pid_s)
-            q = int(qty_raw)
+            q = int(row.get("quantity", 0))
         except (TypeError, ValueError):
             continue
         if q < 1:
             continue
-        row = database.product_by_id(conn, pid)
-        if not row:
-            continue
-        slug = str(row["slug"] or "").strip().lower()
-        if slug:
-            counts[slug] = counts.get(slug, 0) + q
+        counts[slug] = counts.get(slug, 0) + q
     return counts
 
 
@@ -1189,16 +1283,17 @@ def _mini_soundwave_just_completed(before: Dict[str, int], after: Dict[str, int]
 
 def _cart_upsell_for_add(
     conn: sqlite3.Connection,
-    before_cart: Dict[str, Any],
-    after_cart: Dict[str, Any],
+    before_lines: List[Dict[str, Any]],
+    after_lines: List[Dict[str, Any]],
     added_slug: str,
 ) -> Optional[Dict[str, Any]]:
     """Single upsell payload after add-to-cart (Mini Series system)."""
+    del conn  # reserved for future DB-backed upsell rules
     s = (added_slug or "").strip().lower()
     if s not in _MINI_SERIES_SLUGS:
         return None
-    before = _cart_slug_counts(conn, before_cart)
-    after = _cart_slug_counts(conn, after_cart)
+    before = _cart_slug_counts_from_lines(before_lines)
+    after = _cart_slug_counts_from_lines(after_lines)
     ma, ha = after.get("melody", 0), after.get("harmony", 0)
 
     def pack(
@@ -1313,16 +1408,43 @@ def cart_add():
             return jsonify({"ok": False, "message": msg}), 400
         flash(msg, "error")
         return redirect(request.referrer or url_for("shop"))
-    before_cart = dict(session.get("cart") or {})
-    cart = dict(before_cart)
-    cart[str(pid)] = cart.get(str(pid), 0) + qty
-    session["cart"] = cart
-    total_qty = _session_cart_total_qty()
 
-    upsell: Optional[Dict[str, Any]] = None
     with database.get_db() as conn:
+        before_lines = copy.deepcopy(_cart_get_list(conn))
+        lst = _cart_get_list(conn)
+        new_list: List[Dict[str, Any]] = []
+        found = False
+        for row in lst:
+            if int(row["product_id"]) == pid:
+                new_list.append(
+                    {
+                        **row,
+                        "quantity": min(999, int(row["quantity"]) + qty),
+                    }
+                )
+                found = True
+            else:
+                new_list.append(dict(row))
+        if not found:
+            slug = str(p["slug"] or "").strip().lower()
+            new_list.append(
+                {
+                    "product_id": pid,
+                    "quantity": qty,
+                    "name": str(p["name"] or "Product"),
+                    "price_cents": int(p["price_cents"]),
+                    "image": _product_success_image_static(slug),
+                    "slug": slug,
+                }
+            )
+        new_list.sort(key=lambda x: x["product_id"])
+        session["cart"] = new_list
+        session.modified = True
+        after_lines = copy.deepcopy(_cart_get_list(conn))
         added_slug = str(p["slug"] or "").strip().lower()
-        upsell = _cart_upsell_for_add(conn, before_cart, cart, added_slug)
+        upsell = _cart_upsell_for_add(conn, before_lines, after_lines, added_slug)
+
+    total_qty = _session_cart_total_qty()
 
     if wants_json:
         return jsonify(
@@ -1346,12 +1468,17 @@ def cart_update():
         qty = int(request.form.get("quantity", "0"))
     except ValueError:
         qty = 0
-    cart = session.get("cart") or {}
-    if qty < 1:
-        cart.pop(str(pid), None)
-    else:
-        cart[str(pid)] = min(999, qty)
-    session["cart"] = cart
+    with database.get_db() as conn:
+        lst = _cart_get_list(conn)
+        new_list: List[Dict[str, Any]] = []
+        for row in lst:
+            if str(row["product_id"]) == str(pid):
+                if qty >= 1:
+                    new_list.append({**row, "quantity": min(999, qty)})
+            else:
+                new_list.append(dict(row))
+        session["cart"] = new_list
+        session.modified = True
     flash("Cart updated.", "ok")
     return redirect(url_for("cart_view"))
 
@@ -1359,10 +1486,11 @@ def cart_update():
 @app.route("/cart/remove", methods=["POST"])
 def cart_remove():
     pid = request.form.get("product_id")
-    cart = session.get("cart") or {}
-    if pid in cart:
-        del cart[pid]
-        session["cart"] = cart
+    with database.get_db() as conn:
+        lst = _cart_get_list(conn)
+        new_list = [dict(r) for r in lst if str(r["product_id"]) != str(pid)]
+        session["cart"] = new_list
+        session.modified = True
     return redirect(url_for("cart_view"))
 
 
@@ -1598,7 +1726,6 @@ def _stripe_process_paid_return(csid: str):
                 apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
                 refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
             lines = order_items_lines(conn, oid)
-        session["cart"] = {}
     else:
         try:
             pid = int(meta.get("product_id") or 0)
@@ -1728,131 +1855,42 @@ def _stripe_process_paid_return(csid: str):
 
 @app.route("/create-checkout-session", methods=["POST"])
 def create_checkout_session():
-    secret = _stripe_secret_key()
-    if not secret:
-        flash("Online payments are not configured.", "error")
-        return redirect(request.referrer or url_for("shop"))
-    stripe.api_key = secret
-
-    try:
-        pid = int(request.form.get("product_id", 0))
-    except (TypeError, ValueError):
-        pid = 0
-    qty = 1
-
-    with database.get_db() as conn:
-        p = database.product_by_id(conn, pid)
-    if not p or not database.product_add_to_cart_enabled(p):
-        flash("This product is not available for purchase.", "error")
-        return redirect(request.referrer or url_for("shop"))
-
-    unit_amount = int(p["price_cents"])
-    if unit_amount < 50:
-        flash("This product cannot be charged online. Contact us to order.", "error")
-        return redirect(request.referrer or url_for("shop"))
-
-    try:
-        default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
-    except ValueError:
-        default_shipping_cents = 0
-
-    affiliate_slug = (request.cookies.get("licorice_affiliate_slug") or "").strip()
-    guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
-
-    base = _stripe_checkout_base_url()
-    checkout_path = url_for("checkout", _external=False)
-    success_path = url_for("checkout_success", _external=False)
-    success_url = f"{base}{success_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
-    # Back / cancel on Stripe must return to our checkout so the session cart is still there.
-    cancel_url = f"{base}{checkout_path}?cancelled=true"
-
-    slug_val = str(p["slug"] or "").strip()
-    line_items: List[Dict[str, Any]] = [
-        {
-            "price_data": {
-                "currency": "nzd",
-                "product_data": {
-                    "name": str(p["name"] or "Product"),
-                    "metadata": {"product_id": str(p["id"]), "slug": slug_val},
-                },
-                "unit_amount": unit_amount,
-            },
-            "quantity": qty,
-        }
-    ]
-    if default_shipping_cents > 0:
-        line_items.append(
-            {
-                "price_data": {
-                    "currency": "nzd",
-                    "product_data": {"name": "Shipping"},
-                    "unit_amount": default_shipping_cents,
-                },
-                "quantity": 1,
-            }
-        )
-
-    session.modified = True
-
-    try:
-        checkout_session = stripe.checkout.Session.create(
-            line_items=line_items,
-            mode="payment",
-            success_url=success_url,
-            cancel_url=cancel_url,
-            shipping_address_collection={"allowed_countries": _STRIPE_SHIPPING_COUNTRIES},
-            phone_number_collection={"enabled": True},
-            metadata={
-                "product_id": str(p["id"]),
-                "quantity": str(qty),
-                "shipping_cents": str(default_shipping_cents),
-                "affiliate_slug": affiliate_slug,
-                "guest_session_id": guest_session_id,
-            },
-        )
-    except stripe.error.StripeError as e:
-        flash(f"Payment could not be started: {getattr(e, 'user_message', None) or str(e)}", "error")
-        return redirect(request.referrer or url_for("shop"))
-
-    url = checkout_session.url
-    if not url:
-        flash("Payment could not be started.", "error")
-        return redirect(request.referrer or url_for("shop"))
-    return redirect(url, code=303)
+    """Start Stripe Checkout from the session cart (same flow as checkout page)."""
+    notes = (request.form.get("notes") or "").strip()[:500]
+    return _stripe_checkout_redirect_from_cart(notes=notes, error_endpoint="cart_view")
 
 
 @app.route("/checkout/stripe/success")
-@app.route("/success")
 def stripe_checkout_success():
-    """Legacy URLs: redirect into /checkout/success with session id (bookmarkable)."""
+    """Legacy URL: redirect into success handler with session id (bookmarkable)."""
     csid = (request.args.get("session_id") or "").strip()
     if not csid:
         flash("Missing payment session.", "error")
         return redirect(url_for("shop"), code=303)
-    return redirect(url_for("checkout_success", success="true", session_id=csid), code=303)
+    return redirect(url_for("checkout_success", session_id=csid), code=303)
 
 
 @app.route("/checkout/stripe/cancel")
 @app.route("/cancel")
 def stripe_checkout_cancel():
-    return redirect(url_for("checkout", cancelled="true"), code=303)
+    return redirect(url_for("cart_view", returned="1"), code=303)
 
 
-def _checkout_start_stripe_redirect() -> Any:
+def _stripe_checkout_redirect_from_cart(*, notes: str, error_endpoint: str) -> Any:
     """Create Stripe Checkout for the current session cart; customer completes address & payment on Stripe."""
     secret = _stripe_secret_key()
     if not secret:
         flash("Online payments are not configured.", "error")
-        return redirect(url_for("checkout"))
+        return redirect(url_for(error_endpoint))
     stripe.api_key = secret
 
     with database.get_db() as conn:
         items, total = _cart_line_items(conn)
     if not items:
         flash("Your cart is empty.", "error")
-        return redirect(url_for("cart_view"))
+        return redirect(url_for(error_endpoint))
 
-    notes_meta = (request.form.get("notes") or "").strip()[:500]
+    notes_meta = (notes or "").strip()[:500]
 
     try:
         default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
@@ -1874,7 +1912,7 @@ def _checkout_start_stripe_redirect() -> Any:
                 "Something in your cart cannot be paid for online. Remove it or contact us to order.",
                 "error",
             )
-            return redirect(url_for("checkout"))
+            return redirect(url_for(error_endpoint))
         slug_val = str(p["slug"] or "").strip()
         line_items.append(
             {
@@ -1902,12 +1940,11 @@ def _checkout_start_stripe_redirect() -> Any:
         )
 
     base = _stripe_checkout_base_url()
-    checkout_path = url_for("checkout", _external=False)
     success_path = url_for("checkout_success", _external=False)
-    success_url = f"{base}{success_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{base}{checkout_path}?cancelled=true"
+    success_url = f"{base}{success_path}?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_path = url_for("cart_view", _external=False)
+    cancel_url = f"{base}{cancel_path}?returned=1"
 
-    # Persist Flask session before sending the browser to checkout.stripe.com (cart lives in session).
     session.modified = True
 
     try:
@@ -1929,13 +1966,18 @@ def _checkout_start_stripe_redirect() -> Any:
         )
     except stripe.error.StripeError as e:
         flash(f"Payment could not be started: {getattr(e, 'user_message', None) or str(e)}", "error")
-        return redirect(url_for("checkout"))
+        return redirect(url_for(error_endpoint))
 
     pay_url = checkout_session.url
     if not pay_url:
         flash("Payment could not be started.", "error")
-        return redirect(url_for("checkout"))
+        return redirect(url_for(error_endpoint))
     return redirect(pay_url, code=303)
+
+
+def _checkout_start_stripe_redirect() -> Any:
+    notes = (request.form.get("notes") or "").strip()[:500]
+    return _stripe_checkout_redirect_from_cart(notes=notes, error_endpoint="checkout")
 
 
 @app.route("/checkout", methods=["GET", "POST"])

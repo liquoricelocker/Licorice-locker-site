@@ -2158,6 +2158,29 @@ body.page-checkout-success .main {
   padding: 0.75rem 0;
 }
 
+.cart-line-thumb {
+  flex: 0 0 auto;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  background: var(--bg-elevated);
+}
+
+.cart-line-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cart-line-img--svg {
+  object-fit: contain;
+  padding: 0.35rem;
+  box-sizing: border-box;
+}
+
 .cart-line-info {
   flex: 1 1 160px;
   min-width: 0;
