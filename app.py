@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 """Licorice Locker — Flask web app."""
 
-from flask import redirect
+from flask import Flask, redirect
+app = Flask(__name__)
 
 @app.route("/")
 def home():
     return redirect("/shop")
-
-from __future__ import annotations
 
 import json
 import os
@@ -61,8 +62,6 @@ from mail import (
 )
 
 load_dotenv()
-
-app = Flask(__name__)
 
 AVATAR_UPLOAD_DIR = Path(__file__).resolve().parent / "static" / "uploads" / "avatars"
 MAX_AVATAR_UPLOAD_BYTES = 3 * 1024 * 1024
