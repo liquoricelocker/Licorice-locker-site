@@ -13,7 +13,16 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from werkzeug.security import generate_password_hash
 
-DB_PATH = Path(__file__).resolve().parent / "data" / "licorice.db"
+
+def _resolved_db_path() -> Path:
+    """Default: ./data/licorice.db. Set DATABASE_PATH for Railway volumes or custom location."""
+    raw = (os.environ.get("DATABASE_PATH") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parent / "data" / "licorice.db"
+
+
+DB_PATH = _resolved_db_path()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -145,6 +154,7 @@ def init_db() -> None:
         _migrate_product_columns(db)
         _migrate_user_columns(db)
         _migrate_product_enhanced(db)
+        _ensure_core_products(db)
         _ensure_product_specs(db)
         _backfill_product_enhanced(db)
         _ensure_product_images_tags(db)
@@ -577,6 +587,29 @@ _PRODUCT_IMAGE_SEEDS: Dict[str, Tuple[Tuple[str, int, str], ...]] = {
 }
 
 
+def _core_catalog_product_rows() -> List[Tuple[str, str, int, str, int, int]]:
+    """Single source of truth for storefront SKUs (matches seed_if_empty)."""
+    return [
+        ("sound-wave", "Sound Wave", 42900, _SOUND_WAVE_DESCRIPTION.split("\n\n")[0], 0, 1),
+        ("allegro", "Allegra", 14300, _ALLEGRA_DESCRIPTION.split("\n\n")[0], 1, 0),
+        ("melody", "Melody", 14300, _MELODY_DESCRIPTION.split("\n\n")[0], 2, 0),
+        ("harmony", "Harmony", 14300, _HARMONY_DESCRIPTION.split("\n\n")[0], 3, 0),
+        ("riff", "Riff", 14300, _RIFF_DESCRIPTION.split("\n\n")[0], 4, 0),
+    ]
+
+
+def _ensure_core_products(db: sqlite3.Connection) -> None:
+    """Insert core products if missing (e.g. gunicorn on Railway never runs seed_if_empty). Idempotent."""
+    for slug, name, cents, desc, sort_order, is_main in _core_catalog_product_rows():
+        db.execute(
+            """
+            INSERT OR IGNORE INTO products (slug, name, price_cents, description, sort_order, is_main)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (slug, name, cents, desc, sort_order, is_main),
+        )
+
+
 def _backfill_product_enhanced(db: sqlite3.Connection) -> None:
     """SKU, cm dimensions, capacity count, featured, collection; unique index on sku."""
     db.execute(
@@ -901,21 +934,7 @@ def seed_if_empty() -> None:
             ),
         )
 
-        products = [
-            ("sound-wave", "Sound Wave", 42900, _SOUND_WAVE_DESCRIPTION.split("\n\n")[0], 0, 1),
-            ("allegro", "Allegra", 14300, _ALLEGRA_DESCRIPTION.split("\n\n")[0], 1, 0),
-            ("melody", "Melody", 14300, _MELODY_DESCRIPTION.split("\n\n")[0], 2, 0),
-            ("harmony", "Harmony", 14300, _HARMONY_DESCRIPTION.split("\n\n")[0], 3, 0),
-            ("riff", "Riff", 14300, _RIFF_DESCRIPTION.split("\n\n")[0], 4, 0),
-        ]
-        for slug, name, cents, desc, sort_order, is_main in products:
-            db.execute(
-                """
-                INSERT INTO products (slug, name, price_cents, description, sort_order, is_main)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (slug, name, cents, desc, sort_order, is_main),
-            )
+        _ensure_core_products(db)
         _ensure_product_specs(db)
         _backfill_product_enhanced(db)
         _ensure_product_images_tags(db)
