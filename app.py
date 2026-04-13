@@ -279,6 +279,15 @@ def affiliate_media_src(url: Optional[str]) -> str:
 # Idempotent schema migrations (safe for gunicorn import).
 database.init_db()
 app.secret_key = os.environ.get("SECRET_KEY", "dev-change-me-licorice-locker")
+# Same-site return from Stripe → keep cart: Lax allows cookie on top-level return; Secure on HTTPS hosts.
+_use_secure_cookie = (os.environ.get("SESSION_COOKIE_SECURE") or "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+) or bool((os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RENDER") or "").strip())
+app.config["SESSION_COOKIE_SECURE"] = _use_secure_cookie
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -346,6 +355,41 @@ NAV_MENU_ITEMS: Tuple[Tuple[str, str, str], ...] = (
     ("melody", "Melody", "melody-feature-01.png"),
     ("allegro", "Allegra", "allegra-feature-01.png"),
 )
+
+
+def _product_success_image_static(slug: Optional[str]) -> str:
+    """Static path under static/ for success-page hero (matches checkout line banners)."""
+    s = (slug or "").strip().lower()
+    banners = {x[0]: x[2] for x in NAV_MENU_ITEMS}
+    if s in banners:
+        return banners[s]
+    if s:
+        return f"products/{s}.svg"
+    return "shop-hero-banner.png"
+
+
+def _order_success_product_rows(conn: sqlite3.Connection, order_id: int) -> List[Dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT p.name, p.slug, oi.quantity
+        FROM order_items oi
+        JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id = ?
+        ORDER BY p.sort_order, p.id
+        """,
+        (order_id,),
+    ).fetchall()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "name": str(r["name"] or "Product"),
+                "quantity": int(r["quantity"] or 1),
+                "image_static": _product_success_image_static(str(r["slug"] or "")),
+            }
+        )
+    return out
+
 
 @app.context_processor
 def inject_nav_menu() -> Dict[str, Any]:
@@ -1040,18 +1084,9 @@ def product_detail(slug: str):
 
 @app.route("/shop")
 def shop():
-    if (request.args.get("success") or "").strip().lower() == "true":
-        csid = (request.args.get("session_id") or "").strip()
-        if not csid:
-            flash("We could not confirm your payment session. Contact us if you were charged.", "error")
-            return redirect(url_for("shop"), code=303)
-        return _stripe_process_paid_return(csid)
-
     if (request.args.get("cancelled") or "").strip().lower() == "true":
         flash("Checkout cancelled — your cart is unchanged.", "info")
         return redirect(url_for("shop"), code=303)
-
-    shop_checkout_success = session.pop("shop_checkout_success", None)
 
     with database.get_db() as conn:
         products = database.list_products(conn)
@@ -1069,7 +1104,31 @@ def shop():
         melody_product=melody_product,
         allegro_product=allegro_product,
         format_money=database.format_money,
-        shop_checkout_success=shop_checkout_success,
+    )
+
+
+@app.route("/checkout/success")
+def checkout_success():
+    """Stripe redirects here after payment; fulfillment runs once, then a dedicated success screen."""
+    if (request.args.get("success") or "").strip().lower() == "true":
+        csid = (request.args.get("session_id") or "").strip()
+        if csid:
+            return _stripe_process_paid_return(csid)
+        flash("We could not confirm your payment session. Contact us if you were charged.", "error")
+        return redirect(url_for("shop"), code=303)
+    payload = session.pop("checkout_success_view", None)
+    if not payload:
+        return redirect(url_for("shop"), code=303)
+    products = payload.get("products") or []
+    return render_template(
+        "checkout_success.html",
+        format_money=database.format_money,
+        order_number=str(payload.get("order_number") or ""),
+        total_cents=int(payload.get("total_cents") or 0),
+        receipt_sent=bool(payload.get("receipt_sent")),
+        detail=(payload.get("detail") or "").strip(),
+        is_new_order=bool(payload.get("is_new_order")),
+        products=products,
     )
 
 
@@ -1348,7 +1407,7 @@ def _stripe_checkout_base_url() -> str:
 
 
 def _stripe_process_paid_return(csid: str):
-    """Verify Stripe Checkout session, record order once, then redirect to /shop with session banner (PRG)."""
+    """Verify Stripe Checkout session, record order once, then redirect to /checkout/success (PRG)."""
     secret = _stripe_secret_key()
     if not secret:
         flash("Payments are not configured.", "error")
@@ -1371,20 +1430,22 @@ def _stripe_process_paid_return(csid: str):
             (csid,),
         ).fetchone()
         if existing:
+            oid_e = int(existing["id"])
             row = conn.execute(
                 "SELECT receipt_sent, total_cents FROM orders WHERE id = ?",
-                (int(existing["id"]),),
+                (oid_e,),
             ).fetchone()
             total = int((row or existing)["total_cents"] or 0)
-            session["shop_checkout_success"] = {
+            prows = _order_success_product_rows(conn, oid_e)
+            session["checkout_success_view"] = {
                 "order_number": str(existing["order_number"]),
                 "total_cents": total,
                 "receipt_sent": bool(row and row["receipt_sent"]),
-                "headline": "Your order is already confirmed.",
                 "detail": "Thanks again — we have your order on record.",
                 "is_new_order": False,
+                "products": prows,
             }
-            return redirect(url_for("shop"), code=303)
+            return redirect(url_for("checkout_success"), code=303)
 
     raw_cs = cs.to_dict()
     meta = dict(raw_cs.get("metadata") or {})
@@ -1652,15 +1713,17 @@ def _stripe_process_paid_return(csid: str):
         if receipt_ok
         else "We will email you when your dispatch details are ready."
     )
-    session["shop_checkout_success"] = {
+    with database.get_db() as conn:
+        prows = _order_success_product_rows(conn, oid)
+    session["checkout_success_view"] = {
         "order_number": order_number,
         "total_cents": total_with_shipping,
         "receipt_sent": receipt_ok,
-        "headline": "Your record display is on its way.",
         "detail": detail,
         "is_new_order": True,
+        "products": prows,
     }
-    return redirect(url_for("shop"), code=303)
+    return redirect(url_for("checkout_success"), code=303)
 
 
 @app.route("/create-checkout-session", methods=["POST"])
@@ -1697,9 +1760,11 @@ def create_checkout_session():
     guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
 
     base = _stripe_checkout_base_url()
-    shop_path = url_for("shop", _external=False)
-    success_url = f"{base}{shop_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{base}{shop_path}?cancelled=true"
+    checkout_path = url_for("checkout", _external=False)
+    success_path = url_for("checkout_success", _external=False)
+    success_url = f"{base}{success_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
+    # Back / cancel on Stripe must return to our checkout so the session cart is still there.
+    cancel_url = f"{base}{checkout_path}?cancelled=true"
 
     slug_val = str(p["slug"] or "").strip()
     line_items: List[Dict[str, Any]] = [
@@ -1726,6 +1791,8 @@ def create_checkout_session():
                 "quantity": 1,
             }
         )
+
+    session.modified = True
 
     try:
         checkout_session = stripe.checkout.Session.create(
@@ -1757,18 +1824,18 @@ def create_checkout_session():
 @app.route("/checkout/stripe/success")
 @app.route("/success")
 def stripe_checkout_success():
-    """Legacy URLs: same flow as returning to /shop after Stripe (bookmarkable)."""
+    """Legacy URLs: redirect into /checkout/success with session id (bookmarkable)."""
     csid = (request.args.get("session_id") or "").strip()
     if not csid:
         flash("Missing payment session.", "error")
         return redirect(url_for("shop"), code=303)
-    return redirect(url_for("shop", success="true", session_id=csid), code=303)
+    return redirect(url_for("checkout_success", success="true", session_id=csid), code=303)
 
 
 @app.route("/checkout/stripe/cancel")
 @app.route("/cancel")
 def stripe_checkout_cancel():
-    return redirect(url_for("shop", cancelled="true"), code=303)
+    return redirect(url_for("checkout", cancelled="true"), code=303)
 
 
 def _checkout_start_stripe_redirect() -> Any:
@@ -1835,10 +1902,13 @@ def _checkout_start_stripe_redirect() -> Any:
         )
 
     base = _stripe_checkout_base_url()
-    shop_path = url_for("shop", _external=False)
     checkout_path = url_for("checkout", _external=False)
-    success_url = f"{base}{shop_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
+    success_path = url_for("checkout_success", _external=False)
+    success_url = f"{base}{success_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{base}{checkout_path}?cancelled=true"
+
+    # Persist Flask session before sending the browser to checkout.stripe.com (cart lives in session).
+    session.modified = True
 
     try:
         checkout_session = stripe.checkout.Session.create(
@@ -1870,10 +1940,6 @@ def _checkout_start_stripe_redirect() -> Any:
 
 @app.route("/checkout", methods=["GET", "POST"])
 def checkout():
-    if request.method == "GET" and (request.args.get("cancelled") or "").strip().lower() == "true":
-        flash("Checkout cancelled — your cart is unchanged.", "info")
-        return redirect(url_for("checkout"), code=303)
-
     try:
         default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
     except ValueError:
@@ -1891,6 +1957,11 @@ def checkout():
     if request.method == "POST":
         return _checkout_start_stripe_redirect()
 
+    cancel_q = (request.args.get("cancelled") or "").strip().lower()
+    stripe_back_from_payment = cancel_q in ("true", "1", "yes")
+    if request.method == "GET" and stripe_back_from_payment:
+        flash("You’re back on checkout — your basket is unchanged.", "info")
+
     payments_ready = bool(_stripe_secret_key())
     return render_template(
         "checkout.html",
@@ -1900,6 +1971,7 @@ def checkout():
         affiliate=affiliate_row,
         checkout_shipping_cents=default_shipping_cents,
         payments_ready=payments_ready,
+        stripe_back_from_payment=stripe_back_from_payment,
     )
 
 

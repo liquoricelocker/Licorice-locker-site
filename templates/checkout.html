@@ -84,4 +84,16 @@
 })();
 </script>
 {% endif %}
+{% if stripe_back_from_payment %}
+<script>
+(function () {
+  try {
+    var clean = {{ url_for('checkout')|tojson }};
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', clean);
+    }
+  } catch (e) {}
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -1669,6 +1669,102 @@ body.slide-menu-open .slide-menu-panel {
   margin: 0;
 }
 
+/* ——— Stripe checkout success (post-payment) ——— */
+body.page-checkout-success .main {
+  max-width: none;
+}
+
+.checkout-success-panel {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 4vw, 3rem) clamp(1rem, 4vw, 2rem) 3rem;
+  text-align: center;
+}
+
+.checkout-success-visual {
+  margin: 0 auto 1.75rem;
+}
+
+.checkout-success-hero-wrap {
+  margin: 0 auto;
+  max-width: min(540px, 100%);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(25, 23, 36, 0.12);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+}
+
+.checkout-success-hero-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+}
+
+.checkout-success-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.checkout-success-card {
+  position: relative;
+  width: min(200px, 42vw);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  box-shadow: 0 10px 30px rgba(25, 23, 36, 0.08);
+  background: var(--surface);
+}
+
+.checkout-success-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  vertical-align: top;
+}
+
+.checkout-success-qty {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(25, 23, 36, 0.85);
+  color: #fff;
+}
+
+.checkout-success-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.75rem, 5vw, 2.35rem);
+  line-height: 1.2;
+  margin: 0 0 0.75rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.checkout-success-meta {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+}
+
+.checkout-success-detail {
+  margin: 0 auto 1rem;
+  max-width: 36rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.checkout-success-actions {
+  margin: 1.75rem 0 0;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--hairline);

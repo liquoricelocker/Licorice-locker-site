@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Thank you — Licorice Locker{% endblock %}
+{% block body_class %}page-checkout-success{% endblock %}
+{% block content %}
+<section class="checkout-success-panel" aria-labelledby="checkout-success-heading">
+  <div class="checkout-success-visual">
+    {% if products and products|length == 1 %}
+    <div class="checkout-success-hero-wrap">
+      <img
+        class="checkout-success-hero-img"
+        src="{{ url_for('static', filename=products[0].image_static) }}"
+        alt="{{ products[0].name }}"
+        width="900"
+        height="560"
+        decoding="async"
+      >
+    </div>
+    {% elif products and products|length > 1 %}
+    <div class="checkout-success-grid" role="list">
+      {% for it in products %}
+      <div class="checkout-success-card" role="listitem">
+        <img
+          class="checkout-success-thumb"
+          src="{{ url_for('static', filename=it.image_static) }}"
+          alt="{{ it.name }}"
+          width="320"
+          height="200"
+          loading="lazy"
+          decoding="async"
+        >
+        {% if it.quantity > 1 %}
+        <span class="checkout-success-qty">×{{ it.quantity }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="checkout-success-hero-wrap">
+      <img
+        class="checkout-success-hero-img"
+        src="{{ url_for('static', filename='shop-hero-banner.png') }}"
+        alt="Licorice Locker"
+        width="900"
+        height="560"
+        decoding="async"
+      >
+    </div>
+    {% endif %}
+  </div>
+  <h1 id="checkout-success-heading" class="checkout-success-title">Congratulations on your purchase</h1>
+  <p class="checkout-success-meta muted">Order <strong>{{ order_number }}</strong> · {{ format_money(total_cents) }}</p>
+  {% if detail %}
+  <p class="checkout-success-detail">{{ detail }}</p>
+  {% endif %}
+  {% if receipt_sent %}
+  <p class="muted small">A confirmation email has been sent.</p>
+  {% else %}
+  <p class="muted small">If you do not see a confirmation email shortly, check spam or contact us — your order is still on file.</p>
+  {% endif %}
+  <p class="checkout-success-actions">
+    <a class="btn primary" href="{{ url_for('shop') }}">Back to shop</a>
+  </p>
+</section>
+{% if is_new_order %}
+<script>
+(function () {
+  if (!window.LLAnalytics) return;
+  LLAnalytics.track('purchase', { order_number: {{ order_number|tojson }} });
+  LLAnalytics.convert();
+})();
+</script>
+{% endif %}
+{% endblock %}

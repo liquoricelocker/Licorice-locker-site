@@ -2,15 +2,6 @@
 {% block title %}Shop — Licorice Locker{% endblock %}
 {% block body_class %}page-shop{% endblock %}
 {% block content %}
-{% if shop_checkout_success %}
-<div class="shop-checkout-banner shop-checkout-banner--success" role="status" aria-live="polite">
-  <p class="shop-checkout-banner__title">{{ shop_checkout_success.headline }}</p>
-  {% if shop_checkout_success.detail %}
-  <p class="shop-checkout-banner__detail">{{ shop_checkout_success.detail }}</p>
-  {% endif %}
-  <p class="shop-checkout-banner__meta muted small">Order {{ shop_checkout_success.order_number }} · {{ format_money(shop_checkout_success.total_cents) }}</p>
-</div>
-{% endif %}
 <section class="shop-hero-banner" aria-label="Featured">
   <img
     class="shop-hero-banner-img"
@@ -226,13 +217,4 @@
   {% endif %}
   {% endfor %}
 </div>
-{% if shop_checkout_success and shop_checkout_success.get('is_new_order') %}
-<script>
-(function () {
-  if (!window.LLAnalytics) return;
-  LLAnalytics.track('purchase', { order_number: {{ shop_checkout_success.order_number|tojson }} });
-  LLAnalytics.convert();
-})();
-</script>
-{% endif %}
 {% endblock %}
