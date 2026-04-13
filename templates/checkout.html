@@ -54,30 +54,34 @@
     · Total: <strong><span data-nzd-cents="{{ total + (checkout_shipping_cents|default(0)) }}">{{ format_money(total + (checkout_shipping_cents|default(0))) }}</span></strong>
   </p>
   <p class="muted small ll-currency-disclaimer">Prices in USD or EUR are estimates. Final payment is processed in NZD.</p>
-  <p class="muted small">Shipping is included in the total above (set via site configuration).</p>
+  <p class="muted small">Shipping shown above is included in what you pay at checkout (set via site configuration). You will confirm your delivery address on our secure Stripe payment page.</p>
 
-  <h2>Shipping &amp; details</h2>
-  <form method="post" class="form-grid js-checkout-form">
-    <input type="hidden" name="shipping_cents" value="{{ checkout_shipping_cents }}">
-    <input type="hidden" name="payment_method" value="card">
-    <label>First name <input name="first_name" required autocomplete="given-name"></label>
-    <label>Last name <input name="last_name" required autocomplete="family-name"></label>
-    <label>Email <input type="email" name="email" required autocomplete="email"></label>
-    <label>Phone <span class="muted">(optional)</span>
-      <input type="tel" name="customer_phone" autocomplete="tel" placeholder="e.g. +64 …"></label>
-    <label class="full">Address line 1 <input name="shipping_line1" required autocomplete="address-line1"></label>
-    <label class="full">Address line 2 <input name="shipping_line2" autocomplete="address-line2"></label>
-    <label>City <input name="shipping_city" required autocomplete="address-level2"></label>
-    <label>Region / state <input name="shipping_region" autocomplete="address-level1"></label>
-    <label>Postal code <input name="shipping_postal" required autocomplete="postal-code"></label>
-    <label>Country <input name="shipping_country" value="NZ" autocomplete="country-name"></label>
-    <label class="full">Order notes (optional)
-      <textarea name="notes" rows="2" placeholder="Delivery instructions or special requests"></textarea>
+  <h2>Order notes</h2>
+  <form method="post" class="form-grid js-checkout-stripe-form">
+    <label class="full">Notes for us (optional, max 500 characters)
+      <textarea name="notes" rows="3" maxlength="500" placeholder="Delivery instructions or special requests — you can also add details after payment by email."></textarea>
     </label>
     <div class="full actions-row">
-      <button type="submit" class="btn primary js-checkout-submit">Place order</button>
+      {% if payments_ready %}
+      <button type="submit" class="btn primary js-checkout-stripe-submit">Place order</button>
+      {% else %}
+      <p class="muted">Online payment is not available yet. Please try again later or contact us.</p>
+      {% endif %}
     </div>
   </form>
   {% endif %}
 </section>
+{% if payments_ready and items %}
+<script>
+(function () {
+  var form = document.querySelector('.js-checkout-stripe-form');
+  if (!form) return;
+  form.addEventListener('submit', function () {
+    form.querySelectorAll('.js-checkout-stripe-submit').forEach(function (btn) {
+      btn.disabled = true;
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

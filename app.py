@@ -1349,32 +1349,7 @@ def _stripe_process_paid_return(csid: str):
 
     raw_cs = cs.to_dict()
     meta = dict(raw_cs.get("metadata") or {})
-    try:
-        pid = int(meta.get("product_id") or 0)
-    except (TypeError, ValueError):
-        pid = 0
-    try:
-        qty = max(1, int(meta.get("quantity") or 1))
-    except (TypeError, ValueError):
-        qty = 1
-    try:
-        shipping_cents = max(0, int(meta.get("shipping_cents") or 0))
-    except (TypeError, ValueError):
-        shipping_cents = 0
-
-    with database.get_db() as conn:
-        p = database.product_by_id(conn, pid)
-    if not p:
-        flash("Order could not be recorded (product missing). Contact us.", "error")
-        return redirect(url_for("shop"), code=303)
-
-    unit = int(p["price_cents"])
-    subtotal_cents = unit * qty
-    expected_total = subtotal_cents + shipping_cents
     paid_total = int(cs.amount_total or 0)
-    if paid_total != expected_total:
-        flash("Payment amount mismatch. Contact us with your Stripe receipt.", "error")
-        return redirect(url_for("shop"), code=303)
 
     affiliate_slug = (meta.get("affiliate_slug") or "").strip()
     guest_session_id = (meta.get("guest_session_id") or "").strip()
@@ -1402,9 +1377,9 @@ def _stripe_process_paid_return(csid: str):
         flash("Order could not be recorded (incomplete details). Contact us.", "error")
         return redirect(url_for("shop"), code=303)
 
-    parts = cust_name.split(None, 1) if cust_name else []
-    first = parts[0] if parts else "Customer"
-    last = parts[1] if len(parts) > 1 else ""
+    parts_nm = cust_name.split(None, 1) if cust_name else []
+    first = parts_nm[0] if parts_nm else "Customer"
+    last = parts_nm[1] if len(parts_nm) > 1 else ""
     shipping_name = ship_name or f"{first} {last}".strip()
 
     order_number = f"LL-{_now_utc().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
@@ -1415,78 +1390,214 @@ def _stripe_process_paid_return(csid: str):
         ac = (affiliate_row["affiliate_code"] if "affiliate_code" in affiliate_row.keys() else None) or ""
         affiliate_code = ac.strip() or (affiliate_row["affiliate_slug"] or "")
     affiliate_counted = 1 if aff_id else 0
-    total_with_shipping = paid_total
+    checkout_mode = (meta.get("checkout_mode") or "").strip().lower()
+    customer_notes = (meta.get("customer_notes") or "").strip()
 
-    with database.get_db() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO orders (
-                order_number, order_type, affiliate_user_id,
-                affiliate_code, affiliate_counted,
-                customer_first, customer_last, customer_email,
-                customer_phone,
-                guest_session_id,
-                shipping_name,
-                shipping_line1, shipping_line2, shipping_city, shipping_region,
-                shipping_postal, shipping_country,
-                subtotal_cents, shipping_cents, total_cents,
-                payment_method, customer_notes,
-                status, fulfillment_status,
-                shipping_tracking,
-                stripe_checkout_session_id
+    if checkout_mode == "cart":
+        try:
+            shipping_cents = max(0, int(meta.get("shipping_cents") or 0))
+        except (TypeError, ValueError):
+            shipping_cents = 0
+        cart_spec = (meta.get("cart_lines") or "").strip()
+        pairs: List[Tuple[int, int]] = []
+        for seg in cart_spec.split(","):
+            seg = seg.strip()
+            if not seg:
+                continue
+            left, _, right = seg.partition(":")
+            try:
+                pairs.append((int(left.strip()), max(1, int(right.strip()))))
+            except (TypeError, ValueError):
+                flash("Order could not be recorded (invalid cart). Contact us.", "error")
+                return redirect(url_for("shop"), code=303)
+        pairs.sort(key=lambda t: t[0])
+        order_lines: List[Tuple[int, int, int, Any]] = []
+        subtotal_cents = 0
+        with database.get_db() as conn:
+            for pid, qty in pairs:
+                p = database.product_by_id(conn, pid)
+                if not p or not database.product_add_to_cart_enabled(p):
+                    flash("Order could not be recorded (product unavailable). Contact us.", "error")
+                    return redirect(url_for("shop"), code=303)
+                unit = int(p["price_cents"])
+                subtotal_cents += unit * qty
+                order_lines.append((pid, qty, unit, p))
+        expected_total = subtotal_cents + shipping_cents
+        if paid_total != expected_total:
+            flash("Payment amount mismatch. Contact us with your Stripe receipt.", "error")
+            return redirect(url_for("shop"), code=303)
+        total_with_shipping = paid_total
+        with database.get_db() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO orders (
+                    order_number, order_type, affiliate_user_id,
+                    affiliate_code, affiliate_counted,
+                    customer_first, customer_last, customer_email,
+                    customer_phone,
+                    guest_session_id,
+                    shipping_name,
+                    shipping_line1, shipping_line2, shipping_city, shipping_region,
+                    shipping_postal, shipping_country,
+                    subtotal_cents, shipping_cents, total_cents,
+                    payment_method, customer_notes,
+                    status, fulfillment_status,
+                    shipping_tracking,
+                    stripe_checkout_session_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_number,
+                    otype,
+                    aff_id,
+                    affiliate_code,
+                    affiliate_counted,
+                    first,
+                    last,
+                    email,
+                    phone,
+                    guest_session_id,
+                    shipping_name,
+                    line1,
+                    line2,
+                    city,
+                    region,
+                    postal,
+                    country,
+                    subtotal_cents,
+                    shipping_cents,
+                    total_with_shipping,
+                    "stripe",
+                    customer_notes,
+                    "completed",
+                    "paid",
+                    "",
+                    csid,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                order_number,
-                otype,
-                aff_id,
-                affiliate_code,
-                affiliate_counted,
-                first,
-                last,
-                email,
-                phone,
-                guest_session_id,
-                shipping_name,
-                line1,
-                line2,
-                city,
-                region,
-                postal,
-                country,
-                subtotal_cents,
-                shipping_cents,
-                total_with_shipping,
-                "stripe",
-                "",
-                "completed",
-                "paid",
-                "",
-                csid,
-            ),
-        )
-        oid = int(cur.lastrowid)
-        checkout_ip = client_ip_from_request(request)
-        geo_purchase = geo_lookup(checkout_ip)
-        gc = (geo_purchase.get("country_code") or "").strip() or None
-        gcity = (geo_purchase.get("city") or "").strip() or None
-        conn.execute(
-            "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
-            (gc, (gcity[:128] if gcity else None), oid),
-        )
-        conn.execute(
-            """
-            INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
-            VALUES (?, ?, ?, ?)
-            """,
-            (oid, pid, qty, unit),
-        )
-        if aff_id:
-            dt = _now_utc()
-            apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
-            refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
-        lines = order_items_lines(conn, oid)
+            oid = int(cur.lastrowid)
+            checkout_ip = client_ip_from_request(request)
+            geo_purchase = geo_lookup(checkout_ip)
+            gc = (geo_purchase.get("country_code") or "").strip() or None
+            gcity = (geo_purchase.get("city") or "").strip() or None
+            conn.execute(
+                "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
+                (gc, (gcity[:128] if gcity else None), oid),
+            )
+            for pid, qty, unit, _p in order_lines:
+                conn.execute(
+                    """
+                    INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (oid, pid, qty, unit),
+                )
+            if aff_id:
+                dt = _now_utc()
+                apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
+                refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
+            lines = order_items_lines(conn, oid)
+        session["cart"] = {}
+    else:
+        try:
+            pid = int(meta.get("product_id") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        try:
+            qty = max(1, int(meta.get("quantity") or 1))
+        except (TypeError, ValueError):
+            qty = 1
+        try:
+            shipping_cents = max(0, int(meta.get("shipping_cents") or 0))
+        except (TypeError, ValueError):
+            shipping_cents = 0
+
+        with database.get_db() as conn:
+            p = database.product_by_id(conn, pid)
+        if not p:
+            flash("Order could not be recorded (product missing). Contact us.", "error")
+            return redirect(url_for("shop"), code=303)
+
+        unit = int(p["price_cents"])
+        subtotal_cents = unit * qty
+        expected_total = subtotal_cents + shipping_cents
+        if paid_total != expected_total:
+            flash("Payment amount mismatch. Contact us with your Stripe receipt.", "error")
+            return redirect(url_for("shop"), code=303)
+
+        total_with_shipping = paid_total
+
+        with database.get_db() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO orders (
+                    order_number, order_type, affiliate_user_id,
+                    affiliate_code, affiliate_counted,
+                    customer_first, customer_last, customer_email,
+                    customer_phone,
+                    guest_session_id,
+                    shipping_name,
+                    shipping_line1, shipping_line2, shipping_city, shipping_region,
+                    shipping_postal, shipping_country,
+                    subtotal_cents, shipping_cents, total_cents,
+                    payment_method, customer_notes,
+                    status, fulfillment_status,
+                    shipping_tracking,
+                    stripe_checkout_session_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_number,
+                    otype,
+                    aff_id,
+                    affiliate_code,
+                    affiliate_counted,
+                    first,
+                    last,
+                    email,
+                    phone,
+                    guest_session_id,
+                    shipping_name,
+                    line1,
+                    line2,
+                    city,
+                    region,
+                    postal,
+                    country,
+                    subtotal_cents,
+                    shipping_cents,
+                    total_with_shipping,
+                    "stripe",
+                    "",
+                    "completed",
+                    "paid",
+                    "",
+                    csid,
+                ),
+            )
+            oid = int(cur.lastrowid)
+            checkout_ip = client_ip_from_request(request)
+            geo_purchase = geo_lookup(checkout_ip)
+            gc = (geo_purchase.get("country_code") or "").strip() or None
+            gcity = (geo_purchase.get("city") or "").strip() or None
+            conn.execute(
+                "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
+                (gc, (gcity[:128] if gcity else None), oid),
+            )
+            conn.execute(
+                """
+                INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
+                VALUES (?, ?, ?, ?)
+                """,
+                (oid, pid, qty, unit),
+            )
+            if aff_id:
+                dt = _now_utc()
+                apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
+                refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
+            lines = order_items_lines(conn, oid)
 
     receipt_ok = send_order_confirmation(
         email, order_number, lines, database.format_money(total_with_shipping)
@@ -1621,8 +1732,109 @@ def stripe_checkout_cancel():
     return redirect(url_for("shop", cancelled="true"), code=303)
 
 
+def _checkout_start_stripe_redirect() -> Any:
+    """Create Stripe Checkout for the current session cart; customer completes address & payment on Stripe."""
+    secret = (os.environ.get("STRIPE_SECRET_KEY") or "").strip()
+    if not secret:
+        flash("Online payments are not configured.", "error")
+        return redirect(url_for("checkout"))
+    stripe.api_key = secret
+
+    with database.get_db() as conn:
+        items, total = _cart_line_items(conn)
+    if not items:
+        flash("Your cart is empty.", "error")
+        return redirect(url_for("cart_view"))
+
+    notes_meta = (request.form.get("notes") or "").strip()[:500]
+
+    try:
+        default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
+    except ValueError:
+        default_shipping_cents = 0
+
+    affiliate_slug = (request.cookies.get("licorice_affiliate_slug") or "").strip()
+    guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
+
+    sorted_items = sorted(items, key=lambda x: int(x["product"]["id"]))
+    cart_lines = ",".join(f"{int(it['product']['id'])}:{int(it['quantity'])}" for it in sorted_items)
+
+    line_items: List[Dict[str, Any]] = []
+    for it in sorted_items:
+        p = it["product"]
+        unit_amount = int(p["price_cents"])
+        if unit_amount < 50:
+            flash(
+                "Something in your cart cannot be paid for online. Remove it or contact us to order.",
+                "error",
+            )
+            return redirect(url_for("checkout"))
+        slug_val = str(p["slug"] or "").strip()
+        line_items.append(
+            {
+                "price_data": {
+                    "currency": "nzd",
+                    "product_data": {
+                        "name": str(p["name"] or "Product"),
+                        "metadata": {"product_id": str(p["id"]), "slug": slug_val},
+                    },
+                    "unit_amount": unit_amount,
+                },
+                "quantity": int(it["quantity"]),
+            }
+        )
+    if default_shipping_cents > 0:
+        line_items.append(
+            {
+                "price_data": {
+                    "currency": "nzd",
+                    "product_data": {"name": "Shipping"},
+                    "unit_amount": default_shipping_cents,
+                },
+                "quantity": 1,
+            }
+        )
+
+    base = _stripe_checkout_base_url()
+    shop_path = url_for("shop", _external=False)
+    checkout_path = url_for("checkout", _external=False)
+    success_url = f"{base}{shop_path}?success=true&session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{base}{checkout_path}?cancelled=true"
+
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            line_items=line_items,
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            shipping_address_collection={"allowed_countries": _STRIPE_SHIPPING_COUNTRIES},
+            phone_number_collection={"enabled": True},
+            metadata={
+                "checkout_mode": "cart",
+                "cart_lines": cart_lines,
+                "shipping_cents": str(default_shipping_cents),
+                "affiliate_slug": affiliate_slug,
+                "guest_session_id": guest_session_id,
+                "customer_notes": notes_meta,
+            },
+        )
+    except stripe.error.StripeError as e:
+        flash(f"Payment could not be started: {getattr(e, 'user_message', None) or str(e)}", "error")
+        return redirect(url_for("checkout"))
+
+    pay_url = checkout_session.url
+    if not pay_url:
+        flash("Payment could not be started.", "error")
+        return redirect(url_for("checkout"))
+    return redirect(pay_url, code=303)
+
+
 @app.route("/checkout", methods=["GET", "POST"])
 def checkout():
+    if request.method == "GET" and (request.args.get("cancelled") or "").strip().lower() == "true":
+        flash("Checkout cancelled — your cart is unchanged.", "info")
+        return redirect(url_for("checkout"), code=303)
+
     try:
         default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
     except ValueError:
@@ -1638,143 +1850,9 @@ def checkout():
             affiliate_row = _affiliate_from_cookie(conn, affiliate_slug)
 
     if request.method == "POST":
-        if not items:
-            flash("Your cart is empty.", "error")
-            return redirect(url_for("cart_view"))
-        first = request.form.get("first_name", "").strip()
-        last = request.form.get("last_name", "").strip()
-        email = request.form.get("email", "").strip().lower()
-        line1 = request.form.get("shipping_line1", "").strip()
-        line2 = request.form.get("shipping_line2", "").strip()
-        city = request.form.get("shipping_city", "").strip()
-        region = request.form.get("shipping_region", "").strip()
-        postal = request.form.get("shipping_postal", "").strip()
-        country = request.form.get("shipping_country", "").strip() or "US"
-        if not all([first, last, email, line1, city, postal]):
-            flash("Please fill in all required shipping fields.", "error")
-            return render_template(
-                "checkout.html",
-                items=items,
-                total=total,
-                format_money=database.format_money,
-                affiliate=affiliate_row,
-                checkout_shipping_cents=default_shipping_cents,
-            )
+        return _checkout_start_stripe_redirect()
 
-        order_number = f"LL-{_now_utc().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
-        aff_id = affiliate_row["id"] if affiliate_row else None
-        otype = "affiliate" if aff_id else "direct"
-        subtotal_cents = total
-        raw_ship = request.form.get("shipping_cents")
-        if raw_ship is not None and str(raw_ship).strip() != "":
-            try:
-                shipping_cents = max(0, int(raw_ship))
-            except ValueError:
-                shipping_cents = 0
-        else:
-            shipping_cents = default_shipping_cents
-        total_with_shipping = subtotal_cents + shipping_cents
-        guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
-        shipping_name = f"{first} {last}".strip()
-        affiliate_code = None
-        if affiliate_row:
-            ac = (affiliate_row["affiliate_code"] if "affiliate_code" in affiliate_row.keys() else None) or ""
-            affiliate_code = ac.strip() or (affiliate_row["affiliate_slug"] or "")
-        affiliate_counted = 1 if aff_id else 0
-        payment_method = (request.form.get("payment_method") or "").strip() or "card"
-        customer_notes = (request.form.get("notes") or "").strip()
-        customer_phone = (request.form.get("customer_phone") or "").strip()
-
-        with database.get_db() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO orders (
-                    order_number, order_type, affiliate_user_id,
-                    affiliate_code, affiliate_counted,
-                    customer_first, customer_last, customer_email,
-                    customer_phone,
-                    guest_session_id,
-                    shipping_name,
-                    shipping_line1, shipping_line2, shipping_city, shipping_region,
-                    shipping_postal, shipping_country,
-                    subtotal_cents, shipping_cents, total_cents,
-                    payment_method, customer_notes,
-                    status, fulfillment_status,
-                    shipping_tracking
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    order_number,
-                    otype,
-                    aff_id,
-                    affiliate_code,
-                    affiliate_counted,
-                    first,
-                    last,
-                    email,
-                    customer_phone,
-                    guest_session_id,
-                    shipping_name,
-                    line1,
-                    line2,
-                    city,
-                    region,
-                    postal,
-                    country,
-                    subtotal_cents,
-                    shipping_cents,
-                    total_with_shipping,
-                    payment_method,
-                    customer_notes,
-                    "completed",
-                    "paid",
-                    "",
-                ),
-            )
-            oid = cur.lastrowid
-            checkout_ip = client_ip_from_request(request)
-            geo_purchase = geo_lookup(checkout_ip)
-            gc = (geo_purchase.get("country_code") or "").strip() or None
-            gcity = (geo_purchase.get("city") or "").strip() or None
-            conn.execute(
-                "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
-                (gc, (gcity[:128] if gcity else None), oid),
-            )
-            for it in items:
-                p = it["product"]
-                conn.execute(
-                    """
-                    INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (oid, p["id"], it["quantity"], p["price_cents"]),
-                )
-            if aff_id:
-                dt = _now_utc()
-                apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
-                refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
-
-            lines = order_items_lines(conn, oid)
-
-        session["cart"] = {}
-        receipt_ok = send_order_confirmation(
-            email, order_number, lines, database.format_money(total_with_shipping)
-        )
-        if receipt_ok:
-            with database.get_db() as conn:
-                database.mark_order_receipt_sent(conn, oid)
-            flash("Order placed successfully.", "ok")
-        else:
-            flash("Order recorded, but the confirmation email could not be sent. We will follow up by email.", "error")
-        return render_template(
-            "order_done.html",
-            order_number=order_number,
-            format_money=database.format_money,
-            total=total_with_shipping,
-            receipt_sent=receipt_ok,
-        )
-
+    payments_ready = bool((os.environ.get("STRIPE_SECRET_KEY") or "").strip())
     return render_template(
         "checkout.html",
         items=items,
@@ -1782,6 +1860,7 @@ def checkout():
         format_money=database.format_money,
         affiliate=affiliate_row,
         checkout_shipping_cents=default_shipping_cents,
+        payments_ready=payments_ready,
     )
 
 
