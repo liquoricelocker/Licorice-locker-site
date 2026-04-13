@@ -1,5 +1,11 @@
 """Licorice Locker — Flask web app."""
 
+from flask import redirect
+
+@app.route("/")
+def home():
+    return redirect("/shop")
+
 from __future__ import annotations
 
 import json
