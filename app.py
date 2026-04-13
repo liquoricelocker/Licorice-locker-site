@@ -2,13 +2,6 @@ from __future__ import annotations
 
 """Licorice Locker — Flask web app."""
 
-from flask import Flask, redirect
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return redirect("/shop")
-
 import json
 import os
 import secrets
@@ -23,16 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
-from flask import (
-    Flask,
-    flash,
-    jsonify,
-    redirect,
-    render_template,
-    request,
-    session,
-    url_for,
-)
+from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -62,6 +46,8 @@ from mail import (
 )
 
 load_dotenv()
+
+app = Flask(__name__)
 
 AVATAR_UPLOAD_DIR = Path(__file__).resolve().parent / "static" / "uploads" / "avatars"
 MAX_AVATAR_UPLOAD_BYTES = 3 * 1024 * 1024
