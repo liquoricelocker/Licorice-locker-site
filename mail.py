@@ -155,6 +155,8 @@ def send_resend_post_purchase_emails(order_id: int) -> bool:
     if resend is None or not (os.environ.get("RESEND_API_KEY") or "").strip():
         return False
 
+    print(f"[Licorice Locker] Resend post_purchase bundle starting order_id={order_id}", flush=True)
+
     with database.get_db() as conn:
         order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
         if not order:

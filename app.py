@@ -1532,6 +1532,101 @@ _STRIPE_SHIPPING_COUNTRIES = [
 ]
 
 
+def _as_stripe_dict(obj: Any) -> Dict[str, Any]:
+    if isinstance(obj, dict):
+        return obj
+    return {}
+
+
+def _stripe_identity_from_checkout_session(raw_cs: Dict[str, Any], csid: str) -> Optional[Dict[str, str]]:
+    """Map Stripe Checkout Session shipping + customer payloads into DB-ready fields.
+
+    Merges ``shipping_details.address`` with ``customer_details.address``, uses session-level
+    ``customer_email`` when needed, and applies safe fallbacks for regions that omit postal or city
+    (common source of false 'incomplete details' errors).
+    """
+    ship = _as_stripe_dict(raw_cs.get("shipping_details"))
+    addr_s = _as_stripe_dict(ship.get("address"))
+    cd = _as_stripe_dict(raw_cs.get("customer_details"))
+    addr_c = _as_stripe_dict(cd.get("address"))
+
+    def pick_addr(key: str) -> str:
+        a = addr_s.get(key)
+        b = addr_c.get(key)
+        sa = str(a).strip() if a is not None else ""
+        sb = str(b).strip() if b is not None else ""
+        return sa or sb
+
+    line1 = pick_addr("line1")
+    line2 = pick_addr("line2")
+    city = pick_addr("city")
+    postal = pick_addr("postal_code")
+    region = pick_addr("state")
+    ctry_raw = pick_addr("country") or "NZ"
+    country = str(ctry_raw).strip().upper()[:2]
+    if len(country) != 2:
+        country = "NZ"
+
+    ship_name = str(ship.get("name") or "").strip()
+    email = str(cd.get("email") or "").strip().lower()
+    if not email:
+        email = str(raw_cs.get("customer_email") or "").strip().lower()
+    phone = str(cd.get("phone") or "").strip()
+    cust_name = str(cd.get("name") or "").strip() or ship_name
+
+    fallbacks: List[str] = []
+    if line1 and city and not postal:
+        postal = "n/a"
+        fallbacks.append("postal_code_placeholder")
+    if line1 and not city:
+        city = (region or country or "—")[:120]
+        fallbacks.append("city_fallback")
+    if line1 and not postal:
+        postal = "n/a"
+        fallbacks.append("postal_placeholder_after_city")
+
+    if not email:
+        app.logger.warning(
+            "stripe_checkout_identity_incomplete session_id=%s missing=email",
+            (csid or "")[:32],
+        )
+        return None
+    if not line1:
+        app.logger.warning(
+            "stripe_checkout_identity_incomplete session_id=%s missing=line1 shipping_addr_keys=%s customer_addr_keys=%s",
+            (csid or "")[:32],
+            list(addr_s.keys()),
+            list(addr_c.keys()),
+        )
+        return None
+
+    if fallbacks:
+        app.logger.info(
+            "stripe_checkout_address_fallbacks session_id=%s %s",
+            (csid or "")[:32],
+            ",".join(fallbacks),
+        )
+
+    parts_nm = cust_name.split(None, 1) if cust_name else []
+    first = parts_nm[0] if parts_nm else "Customer"
+    last = parts_nm[1] if len(parts_nm) > 1 else ""
+    shipping_name = ship_name or f"{first} {last}".strip()
+
+    return {
+        "email": email,
+        "phone": phone,
+        "first": first,
+        "last": last,
+        "shipping_name": shipping_name,
+        "line1": line1,
+        "line2": line2,
+        "city": city,
+        "region": region,
+        "postal": postal,
+        "country": country,
+    }
+
+
 def _stripe_checkout_base_url() -> str:
     """Public origin for Stripe success/cancel URLs.
 
@@ -1590,17 +1685,24 @@ def _stripe_process_paid_return(csid: str):
     """Verify Stripe Checkout session, record order once, then redirect to /checkout/success (PRG)."""
     secret = _stripe_secret_key()
     if not secret:
+        app.logger.error("stripe_paid_return_aborted reason=missing_stripe_secret")
         flash("Payments are not configured.", "error")
         return redirect(url_for("shop"), code=303)
     stripe.api_key = secret
 
     try:
-        cs = stripe.checkout.Session.retrieve(csid)
-    except stripe.error.StripeError:
+        cs = stripe.checkout.Session.retrieve(csid, expand=["line_items"])
+    except stripe.error.StripeError as exc:
+        app.logger.warning("stripe_session_retrieve_failed session_id=%s error=%s", csid[:32], exc)
         flash("Could not verify your payment. Contact us with your receipt.", "error")
         return redirect(url_for("shop"), code=303)
 
     if (cs.payment_status or "") != "paid":
+        app.logger.warning(
+            "stripe_session_not_paid session_id=%s payment_status=%r",
+            csid[:32],
+            cs.payment_status,
+        )
         flash("Payment was not completed.", "error")
         return redirect(url_for("shop"), code=303)
 
@@ -1617,6 +1719,12 @@ def _stripe_process_paid_return(csid: str):
             ).fetchone()
             total = int((row or existing)["total_cents"] or 0)
             prows = _order_success_product_rows(conn, oid_e)
+            app.logger.info(
+                "stripe_checkout_idempotent_replay order_id=%s order_number=%s session_id=%s",
+                oid_e,
+                existing["order_number"],
+                csid[:24],
+            )
             session["checkout_success_view"] = {
                 "order_number": str(existing["order_number"]),
                 "total_cents": total,
@@ -1638,29 +1746,22 @@ def _stripe_process_paid_return(csid: str):
         with database.get_db() as conn:
             affiliate_row = _affiliate_from_cookie(conn, affiliate_slug)
 
-    ship_dict = raw_cs.get("shipping_details") or {}
-    addr = ship_dict.get("address") or {}
-    line1 = (addr.get("line1") or "").strip()
-    city = (addr.get("city") or "").strip()
-    postal = (addr.get("postal_code") or "").strip()
-    country = (addr.get("country") or "").strip() or "NZ"
-    line2 = (addr.get("line2") or "").strip()
-    region = (addr.get("state") or "").strip()
-    ship_name = (ship_dict.get("name") or "").strip()
-
-    cd_dict = raw_cs.get("customer_details") or {}
-    email = (cd_dict.get("email") or "").strip().lower()
-    cust_name = (cd_dict.get("name") or "").strip() or ship_name
-    phone = (cd_dict.get("phone") or "").strip()
-
-    if not email or not line1 or not city or not postal:
+    idn = _stripe_identity_from_checkout_session(raw_cs, csid)
+    if not idn:
         flash("Order could not be recorded (incomplete details). Contact us.", "error")
         return redirect(url_for("shop"), code=303)
 
-    parts_nm = cust_name.split(None, 1) if cust_name else []
-    first = parts_nm[0] if parts_nm else "Customer"
-    last = parts_nm[1] if len(parts_nm) > 1 else ""
-    shipping_name = ship_name or f"{first} {last}".strip()
+    email = idn["email"]
+    phone = idn["phone"]
+    first = idn["first"]
+    last = idn["last"]
+    shipping_name = idn["shipping_name"]
+    line1 = idn["line1"]
+    line2 = idn["line2"]
+    city = idn["city"]
+    region = idn["region"]
+    postal = idn["postal"]
+    country = idn["country"]
 
     order_number = f"LL-{_now_utc().strftime('%Y%m%d')}-{secrets.token_hex(3).upper()}"
     aff_id = int(affiliate_row["id"]) if affiliate_row else None
@@ -1688,6 +1789,11 @@ def _stripe_process_paid_return(csid: str):
             try:
                 pairs.append((int(left.strip()), max(1, int(right.strip()))))
             except (TypeError, ValueError):
+                app.logger.warning(
+                    "stripe_order_invalid_cart session_id=%s cart_spec=%r",
+                    csid[:32],
+                    cart_spec[:200] if cart_spec else "",
+                )
                 flash("Order could not be recorded (invalid cart). Contact us.", "error")
                 return redirect(url_for("shop"), code=303)
         pairs.sort(key=lambda t: t[0])
@@ -1697,6 +1803,11 @@ def _stripe_process_paid_return(csid: str):
             for pid, qty in pairs:
                 p = database.product_by_id(conn, pid)
                 if not p or not database.product_add_to_cart_enabled(p):
+                    app.logger.warning(
+                        "stripe_order_product_unavailable session_id=%s product_id=%s",
+                        csid[:32],
+                        pid,
+                    )
                     flash("Order could not be recorded (product unavailable). Contact us.", "error")
                     return redirect(url_for("shop"), code=303)
                 unit = int(p["price_cents"])
@@ -1704,6 +1815,12 @@ def _stripe_process_paid_return(csid: str):
                 order_lines.append((pid, qty, unit, p))
         expected_total = subtotal_cents + shipping_cents
         if paid_total != expected_total:
+            app.logger.warning(
+                "stripe_amount_mismatch session_id=%s paid_total=%s expected_total=%s mode=cart",
+                csid[:32],
+                paid_total,
+                expected_total,
+            )
             flash("Payment amount mismatch. Contact us with your Stripe receipt.", "error")
             return redirect(url_for("shop"), code=303)
         total_with_shipping = paid_total
@@ -1757,6 +1874,14 @@ def _stripe_process_paid_return(csid: str):
                 ),
             )
             oid = int(cur.lastrowid)
+            app.logger.info(
+                "order_inserted order_id=%s order_number=%s stripe_session=%s affiliate_user_id=%s total_cents=%s",
+                oid,
+                order_number,
+                csid[:28],
+                aff_id or 0,
+                total_with_shipping,
+            )
             checkout_ip = client_ip_from_request(request)
             geo_purchase = geo_lookup(checkout_ip)
             gc = (geo_purchase.get("country_code") or "").strip() or None
@@ -1795,6 +1920,11 @@ def _stripe_process_paid_return(csid: str):
         with database.get_db() as conn:
             p = database.product_by_id(conn, pid)
         if not p:
+            app.logger.warning(
+                "stripe_order_product_missing session_id=%s product_id=%s",
+                csid[:32],
+                pid,
+            )
             flash("Order could not be recorded (product missing). Contact us.", "error")
             return redirect(url_for("shop"), code=303)
 
@@ -1802,6 +1932,12 @@ def _stripe_process_paid_return(csid: str):
         subtotal_cents = unit * qty
         expected_total = subtotal_cents + shipping_cents
         if paid_total != expected_total:
+            app.logger.warning(
+                "stripe_amount_mismatch session_id=%s paid_total=%s expected_total=%s mode=single",
+                csid[:32],
+                paid_total,
+                expected_total,
+            )
             flash("Payment amount mismatch. Contact us with your Stripe receipt.", "error")
             return redirect(url_for("shop"), code=303)
 
@@ -1857,6 +1993,14 @@ def _stripe_process_paid_return(csid: str):
                 ),
             )
             oid = int(cur.lastrowid)
+            app.logger.info(
+                "order_inserted order_id=%s order_number=%s stripe_session=%s affiliate_user_id=%s total_cents=%s",
+                oid,
+                order_number,
+                csid[:28],
+                aff_id or 0,
+                total_with_shipping,
+            )
             checkout_ip = client_ip_from_request(request)
             geo_purchase = geo_lookup(checkout_ip)
             gc = (geo_purchase.get("country_code") or "").strip() or None
@@ -1887,7 +2031,19 @@ def _stripe_process_paid_return(csid: str):
         with database.get_db() as conn:
             database.mark_order_receipt_sent(conn, oid)
     else:
+        app.logger.warning(
+            "order_receipt_email_failed order_id=%s order_number=%s resend_and_smtp_failed",
+            oid,
+            order_number,
+        )
         flash("Order confirmed, but the confirmation email could not be sent. We will follow up.", "error")
+
+    app.logger.info(
+        "checkout_flow_complete order_id=%s order_number=%s receipt_sent=%s",
+        oid,
+        order_number,
+        receipt_ok,
+    )
 
     detail = (
         "A confirmation email is on its way."
@@ -3002,7 +3158,16 @@ def init_db_command():
     print("Database ready.")
 
 
+app.logger.info(
+    "Licorice Locker configuration: stripe_secret=%s resend=%s site_url=%r proxy_trust=%s "
+    "(set SITE_URL to your canonical public origin, e.g. https://www.licoricelocker.com)",
+    "configured" if _stripe_secret_key() else "MISSING",
+    "configured" if (os.environ.get("RESEND_API_KEY") or "").strip() else "off",
+    (os.environ.get("SITE_URL") or "").strip() or None,
+    bool((os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("TRUST_PROXY") or "").strip()),
+)
+
+
 if __name__ == "__main__":
-    import os
     database.seed_if_empty()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
