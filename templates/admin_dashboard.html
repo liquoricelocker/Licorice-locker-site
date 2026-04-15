@@ -304,7 +304,10 @@
 <script>
 (function () {
   var chartCountries, chartOrdersGeo, chartCities, chartDropoffs, chartConv;
-  var palette = ['#5c6b7a', '#8b7355', '#6b8e7a', '#7a6b8e', '#8e7a6b', '#4a6670', '#705a4a'];
+  var BRAND_DEEP = '#25181d';
+  var BRAND_NEUTRAL = 'rgba(180, 184, 171, 0.85)';
+  var CHART_TEXT = 'rgba(37, 24, 29, 0.55)';
+  var CHART_GRID = 'rgba(180, 184, 171, 0.35)';
   var analyticsUrl = {{ url_for("api_admin_analytics") | tojson }};
 
   function moneyFromCents(c) {
@@ -346,7 +349,7 @@
       type: 'bar',
       data: {
         labels: cLabels,
-        datasets: [{ label: 'Sessions', data: cVals, backgroundColor: palette[0] }],
+        datasets: [{ label: 'Sessions', data: cVals, backgroundColor: BRAND_DEEP }],
       },
       options: {
         indexAxis: 'y',
@@ -354,7 +357,8 @@
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { precision: 0 } },
+          x: { ticks: { precision: 0, color: CHART_TEXT }, grid: { color: CHART_GRID } },
+          y: { ticks: { color: CHART_TEXT }, grid: { display: false } },
         },
       },
     });
@@ -363,7 +367,7 @@
       type: 'bar',
       data: {
         labels: oLabels,
-        datasets: [{ label: 'Orders', data: oVals, backgroundColor: palette[1] }],
+        datasets: [{ label: 'Orders', data: oVals, backgroundColor: BRAND_NEUTRAL }],
       },
       options: {
         indexAxis: 'y',
@@ -382,7 +386,8 @@
           },
         },
         scales: {
-          x: { ticks: { precision: 0 } },
+          x: { ticks: { precision: 0, color: CHART_TEXT }, grid: { color: CHART_GRID } },
+          y: { ticks: { color: CHART_TEXT }, grid: { display: false } },
         },
       },
     });
@@ -391,7 +396,7 @@
       type: 'bar',
       data: {
         labels: cityLabels,
-        datasets: [{ label: 'Sessions', data: cityVals, backgroundColor: palette[3] }],
+        datasets: [{ label: 'Sessions', data: cityVals, backgroundColor: BRAND_DEEP }],
       },
       options: {
         indexAxis: 'y',
@@ -399,7 +404,8 @@
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { precision: 0 } },
+          x: { ticks: { precision: 0, color: CHART_TEXT }, grid: { color: CHART_GRID } },
+          y: { ticks: { color: CHART_TEXT }, grid: { display: false } },
         },
       },
     });
@@ -408,7 +414,7 @@
       type: 'bar',
       data: {
         labels: dLabels,
-        datasets: [{ label: 'Drop-offs', data: dVals, backgroundColor: palette[2] }],
+        datasets: [{ label: 'Drop-offs', data: dVals, backgroundColor: BRAND_NEUTRAL }],
       },
       options: {
         indexAxis: 'y',
@@ -416,7 +422,8 @@
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { precision: 0 } },
+          x: { ticks: { precision: 0, color: CHART_TEXT }, grid: { color: CHART_GRID } },
+          y: { ticks: { color: CHART_TEXT }, grid: { display: false } },
         },
       },
     });
@@ -436,13 +443,18 @@
         labels: ['Converted', 'Not converted'],
         datasets: [{
           data: [done, rest],
-          backgroundColor: [palette[2], 'rgba(0,0,0,0.12)'],
+          backgroundColor: [BRAND_DEEP, 'rgba(180, 184, 171, 0.45)'],
         }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'bottom' } },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: CHART_TEXT },
+          },
+        },
       },
     });
   }

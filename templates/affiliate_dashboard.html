@@ -192,18 +192,18 @@
         datasets: [{
           label: 'Cumulative revenue ($)',
           data: data.cumulative.values,
-          borderColor: '#c4a7e7',
-          backgroundColor: 'rgba(196,167,231,0.15)',
+          borderColor: '#25181d',
+          backgroundColor: 'rgba(37,24,29,0.08)',
           fill: true,
           tension: 0.25,
         }],
       },
       options: {
         responsive: true,
-        plugins: { legend: { labels: { color: '#e8e4f0' } } },
+        plugins: { legend: { labels: { color: 'rgba(37,24,29,0.55)' } } },
         scales: {
-          x: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
-          y: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+          x: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
+          y: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
         },
       },
     });
@@ -216,21 +216,21 @@
           {
             label: 'Revenue ($)',
             data: m.map(r => r.total_dollars),
-            backgroundColor: 'rgba(123, 212, 184, 0.55)',
+            backgroundColor: 'rgba(37, 24, 29, 0.82)',
           },
           {
             label: 'Est. commission ($)',
             data: m.map(r => r.commission_dollars),
-            backgroundColor: 'rgba(196, 167, 231, 0.55)',
+            backgroundColor: 'rgba(180, 184, 171, 0.85)',
           },
         ],
       },
       options: {
         responsive: true,
-        plugins: { legend: { labels: { color: '#e8e4f0' } } },
+        plugins: { legend: { labels: { color: 'rgba(37,24,29,0.55)' } } },
         scales: {
-          x: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
-          y: { ticks: { color: '#9d96b0' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+          x: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
+          y: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
         },
       },
     });

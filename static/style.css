@@ -1,19 +1,26 @@
 :root {
-  /* Editorial / e-com inspired by clean minimal storefronts — neutral, type-led */
-  --bg: #ffffff;
+  /* Brand: Coffee Bean · Ash Grey · Ghost White — ~60% light / 30% neutral / 10% deep */
+  --brand-deep: #25181d;
+  --brand-neutral: #b4b8ab;
+  --brand-light: #f1f3f9;
+  --bg: var(--brand-light);
+  --header-bg: var(--brand-light);
   --bg-elevated: #ffffff;
-  --surface: rgba(255, 255, 255, 0.9);
+  --surface: #ffffff;
   --surface2: #ffffff;
-  --text: #0d0d0d;
-  --muted: #5a5a5a;
-  --accent: #141414;
-  --accent2: #2a2a2a;
-  --danger: #b42318;
-  --ok: #1d6b4a;
+  --text: var(--brand-deep);
+  --muted: rgba(37, 24, 29, 0.58);
+  --accent: var(--brand-deep);
+  --accent-hover: #3d3239;
+  --accent2: var(--brand-neutral);
+  --on-primary: #ffffff;
+  --danger: #5c3a38;
+  --ok: #3d4840;
   --radius: 2px;
   --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-display: "Syne", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  --hairline: rgba(13, 13, 13, 0.1);
+  --hairline: rgba(180, 184, 171, 0.55);
+  --hairline-soft: rgba(180, 184, 171, 0.35);
   --track-wide: 0.16em;
 }
 
@@ -66,7 +73,7 @@ body {
   letter-spacing: 0.02em;
   line-height: 1.35;
   text-align: center;
-  color: #ffffff;
+  color: var(--on-primary);
   text-shadow:
     0 1px 3px rgba(0, 0, 0, 0.45),
     0 0 24px rgba(0, 0, 0, 0.25);
@@ -200,8 +207,8 @@ body {
   border-radius: 50%;
   border: none;
   padding: 0.55rem 0.5rem;
-  background: #191724;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-primary);
   font-family: var(--font);
   font-weight: 600;
   font-size: clamp(0.95rem, 2.4vw, 1.2rem);
@@ -213,7 +220,7 @@ body {
   text-align: center;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
-  box-shadow: 0 4px 14px rgba(25, 23, 36, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 24, 29, 0.12);
 }
 
 .soundwave-add-btn-text {
@@ -231,13 +238,13 @@ body {
 
 .soundwave-add-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(25, 23, 36, 0.2);
+  box-shadow: 0 3px 10px rgba(37, 24, 29, 0.1);
 }
 
 .soundwave-add-btn:active {
-  background: #141414;
+  background: var(--accent-hover);
   transform: scale(0.96);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 6px rgba(37, 24, 29, 0.12);
 }
 
 .soundwave-add-btn:focus-visible {
@@ -337,8 +344,8 @@ body {
   border-radius: 50%;
   border: none;
   padding: 0.55rem 0.5rem;
-  background: #191724;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-primary);
   font-family: var(--font);
   font-weight: 600;
   font-size: clamp(0.95rem, 2.4vw, 1.2rem);
@@ -350,7 +357,7 @@ body {
   text-align: center;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
-  box-shadow: 0 4px 14px rgba(25, 23, 36, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 24, 29, 0.12);
 }
 
 .riff-add-btn-text {
@@ -368,13 +375,13 @@ body {
 
 .riff-add-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(25, 23, 36, 0.2);
+  box-shadow: 0 3px 10px rgba(37, 24, 29, 0.1);
 }
 
 .riff-add-btn:active {
-  background: #141414;
+  background: var(--accent-hover);
   transform: scale(0.96);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 6px rgba(37, 24, 29, 0.12);
 }
 
 .riff-add-btn:focus-visible {
@@ -467,8 +474,8 @@ body {
   border-radius: 50%;
   border: none;
   padding: 0.55rem 0.5rem;
-  background: #191724;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-primary);
   font-family: var(--font);
   font-weight: 600;
   font-size: clamp(0.95rem, 2.4vw, 1.2rem);
@@ -480,7 +487,7 @@ body {
   text-align: center;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
-  box-shadow: 0 4px 14px rgba(25, 23, 36, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 24, 29, 0.12);
 }
 
 .harmony-add-btn-text {
@@ -498,13 +505,13 @@ body {
 
 .harmony-add-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(25, 23, 36, 0.2);
+  box-shadow: 0 3px 10px rgba(37, 24, 29, 0.1);
 }
 
 .harmony-add-btn:active {
-  background: #141414;
+  background: var(--accent-hover);
   transform: scale(0.96);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 6px rgba(37, 24, 29, 0.12);
 }
 
 .harmony-add-btn:focus-visible {
@@ -603,8 +610,8 @@ body {
   border-radius: 50%;
   border: none;
   padding: 0.55rem 0.5rem;
-  background: #191724;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-primary);
   font-family: var(--font);
   font-weight: 600;
   font-size: clamp(0.95rem, 2.4vw, 1.2rem);
@@ -616,7 +623,7 @@ body {
   text-align: center;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 4px 14px rgba(25, 23, 36, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 24, 29, 0.12);
 }
 
 .melody-add-btn-text {
@@ -634,13 +641,13 @@ body {
 
 .melody-add-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(25, 23, 36, 0.2);
+  box-shadow: 0 3px 10px rgba(37, 24, 29, 0.1);
 }
 
 .melody-add-btn:active {
-  background: #141414;
+  background: var(--accent-hover);
   transform: scale(0.96);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 6px rgba(37, 24, 29, 0.12);
 }
 
 .melody-add-btn:focus-visible {
@@ -735,8 +742,8 @@ body {
   border-radius: 50%;
   border: none;
   padding: 0.55rem 0.5rem;
-  background: #191724;
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--on-primary);
   font-family: var(--font);
   font-weight: 600;
   font-size: clamp(0.95rem, 2.4vw, 1.2rem);
@@ -748,7 +755,7 @@ body {
   text-align: center;
   cursor: pointer;
   transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 4px 14px rgba(25, 23, 36, 0.25);
+  box-shadow: 0 2px 8px rgba(37, 24, 29, 0.12);
 }
 
 .allegro-add-btn-text {
@@ -766,13 +773,13 @@ body {
 
 .allegro-add-btn:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(25, 23, 36, 0.2);
+  box-shadow: 0 3px 10px rgba(37, 24, 29, 0.1);
 }
 
 .allegro-add-btn:active {
-  background: #141414;
+  background: var(--accent-hover);
   transform: scale(0.96);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 6px rgba(37, 24, 29, 0.12);
 }
 
 .allegro-add-btn:focus-visible {
@@ -935,7 +942,7 @@ body {
 
 a {
   color: inherit;
-  text-decoration-color: rgba(13, 13, 13, 0.35);
+  text-decoration-color: rgba(37, 24, 29, 0.35);
   text-underline-offset: 0.2em;
   transition: color 0.15s ease, text-decoration-color 0.15s ease;
 }
@@ -961,7 +968,7 @@ button[type="submit"] {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--bg-elevated);
+  background: var(--header-bg);
 }
 
 body.slide-menu-open {
@@ -978,8 +985,8 @@ body.slide-menu-open .header-wrap {
   align-items: center;
   gap: 0.75rem 1rem;
   padding: 1rem clamp(1rem, 4vw, 2.5rem);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--header-bg);
   position: relative;
   z-index: 2;
 }
@@ -1018,7 +1025,7 @@ body.slide-menu-open .header-wrap {
 
 .currency-switcher-btn:hover {
   opacity: 0.85;
-  border-color: rgba(13, 13, 13, 0.18);
+  border-color: rgba(37, 24, 29, 0.18);
 }
 
 .currency-switcher-menu {
@@ -1030,7 +1037,7 @@ body.slide-menu-open .header-wrap {
   background: var(--bg-elevated);
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
-  box-shadow: 0 12px 36px rgba(25, 23, 36, 0.12);
+  box-shadow: 0 12px 36px rgba(37, 24, 29, 0.12);
   z-index: 40;
 }
 
@@ -1050,7 +1057,7 @@ body.slide-menu-open .header-wrap {
 
 .currency-switcher-option:hover,
 .currency-switcher-option:focus {
-  background: rgba(13, 13, 13, 0.05);
+  background: rgba(37, 24, 29, 0.05);
   outline: none;
 }
 
@@ -1107,8 +1114,8 @@ body.slide-menu-open .header-wrap {
   transform: translate(-50%, -50%);
   font-size: 1.45rem;
   line-height: 1;
-  color: #e53935;
-  text-shadow: 0 0 2px rgba(255, 255, 255, 0.95);
+  color: var(--accent);
+  text-shadow: none;
 }
 
 .header-right {
@@ -1187,7 +1194,7 @@ body.slide-menu-open .header-wrap {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(25, 23, 36, 0.4);
+  background: rgba(37, 24, 29, 0.35);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -1239,15 +1246,15 @@ body.slide-menu-open .slide-menu-panel {
   text-decoration: none;
   color: var(--text);
   border-radius: var(--radius);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   padding: 0.5rem;
-  background: #fff;
+  background: var(--surface);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .slide-menu-item:hover {
-  border-color: rgba(0, 0, 0, 0.18);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  border-color: rgba(37, 24, 29, 0.15);
+  box-shadow: none;
 }
 
 .slide-menu-item-img {
@@ -1276,7 +1283,7 @@ body.slide-menu-open .slide-menu-panel {
   font-weight: 800;
   letter-spacing: 0.08em;
   color: var(--text);
-  background: linear-gradient(145deg, #f0f0ee, #e4e4e0);
+  background: linear-gradient(145deg, rgba(180, 184, 171, 0.35), rgba(241, 243, 249, 0.95));
 }
 
 .slide-menu-item-label {
@@ -1344,7 +1351,7 @@ body.slide-menu-open .slide-menu-panel {
 .main {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 1.5rem clamp(1rem, 4vw, 2.5rem) 4rem;
+  padding: 2rem clamp(1rem, 4vw, 2.5rem) 4.5rem;
 }
 
 .site-footer {
@@ -1353,8 +1360,8 @@ body.slide-menu-open .slide-menu-panel {
   margin: 0;
   margin-inline: 0;
   box-sizing: border-box;
-  background: var(--bg-elevated);
-  border-top: 1px solid var(--hairline);
+  background: var(--header-bg);
+  border-top: 1px solid var(--hairline-soft);
   color: var(--text);
 }
 
@@ -1620,19 +1627,21 @@ body.slide-menu-open .slide-menu-panel {
 }
 
 .flash-error {
-  background: rgba(240, 128, 128, 0.15);
-  color: #ffc9c9;
+  background: rgba(92, 58, 56, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(92, 58, 56, 0.2);
 }
 
 .flash-ok {
-  background: rgba(123, 212, 184, 0.12);
+  background: rgba(61, 72, 64, 0.1);
   color: var(--ok);
+  border: 1px solid rgba(61, 72, 64, 0.18);
 }
 
 .flash-info {
-  background: rgba(25, 23, 36, 0.06);
+  background: rgba(180, 184, 171, 0.25);
   color: var(--muted);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
 }
 
 .shop-checkout-banner {
@@ -1646,8 +1655,8 @@ body.slide-menu-open .slide-menu-panel {
   margin: 0 auto 1rem;
   max-width: 1320px;
   border-radius: var(--radius);
-  border: 1px solid rgba(123, 212, 184, 0.35);
-  background: rgba(123, 212, 184, 0.1);
+  border: 1px solid var(--hairline-soft);
+  background: rgba(180, 184, 171, 0.28);
 }
 
 .shop-checkout-banner__title {
@@ -1690,8 +1699,8 @@ body.page-checkout-success .main {
   max-width: min(540px, 100%);
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(25, 23, 36, 0.12);
-  border: 1px solid var(--hairline);
+  box-shadow: none;
+  border: 1px solid var(--hairline-soft);
   background: var(--surface);
 }
 
@@ -1714,8 +1723,8 @@ body.page-checkout-success .main {
   width: min(200px, 42vw);
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid var(--hairline);
-  box-shadow: 0 10px 30px rgba(25, 23, 36, 0.08);
+  border: 1px solid var(--hairline-soft);
+  box-shadow: none;
   background: var(--surface);
 }
 
@@ -1734,8 +1743,8 @@ body.page-checkout-success .main {
   font-weight: 600;
   padding: 0.2rem 0.45rem;
   border-radius: 6px;
-  background: rgba(25, 23, 36, 0.85);
-  color: #fff;
+  background: rgba(37, 24, 29, 0.88);
+  color: var(--on-primary);
 }
 
 .checkout-success-title {
@@ -1767,11 +1776,11 @@ body.page-checkout-success .main {
 
 .panel {
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   border-radius: var(--radius);
   padding: 1.25rem 1.5rem;
   margin-bottom: 1.25rem;
-  box-shadow: 0 14px 40px rgba(25, 23, 36, 0.06);
+  box-shadow: none;
 }
 
 .panel.narrow {
@@ -1950,13 +1959,13 @@ body.page-checkout-success .main {
   background: var(--surface2);
   border-radius: var(--radius);
   padding: 1.25rem;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   position: relative;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
+  box-shadow: none;
 }
 
 .product-main {
-  border-color: rgba(0, 0, 0, 0.16);
+  border-color: var(--hairline-soft);
 }
 
 .badge {
@@ -1964,7 +1973,7 @@ body.page-checkout-success .main {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(180, 184, 171, 0.35);
   color: var(--accent);
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
@@ -2003,27 +2012,30 @@ body.page-checkout-success .main {
 }
 
 .btn.primary {
-  background: var(--text);
-  color: #fafafa;
+  background: var(--accent);
+  color: var(--on-primary);
   border-radius: var(--radius);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 0.75rem;
   padding: 0.65rem 1.35rem;
+  border: 1px solid var(--accent);
 }
 
 .btn.primary:hover {
-  opacity: 0.88;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  opacity: 1;
 }
 
 .btn:not(.primary) {
-  background: rgba(25, 23, 36, 0.05);
-  border: 1px solid var(--hairline);
+  background: transparent;
+  border: 1px solid var(--accent);
   color: var(--text);
 }
 
 .btn:not(.primary):hover {
-  background: rgba(25, 23, 36, 0.08);
+  background: rgba(37, 24, 29, 0.04);
 }
 
 .inline-form {
@@ -2210,20 +2222,20 @@ body.page-checkout-success .main {
 }
 
 .notice {
-  background: rgba(123, 212, 184, 0.1);
+  background: rgba(180, 184, 171, 0.28);
   padding: 0.75rem 1rem;
   border-radius: var(--radius);
-  border: 1px solid rgba(123, 212, 184, 0.25);
+  border: 1px solid var(--hairline-soft);
 }
 
 .affiliate-landing .aff-banner {
   min-height: 220px;
   background-size: cover;
   background-position: center;
-  background-color: var(--surface2);
+  background-color: var(--brand-light);
   border-radius: var(--radius);
   margin-bottom: 1.25rem;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
 }
 
 .aff-banner-inner {
@@ -2300,7 +2312,7 @@ body.page-checkout-success .main {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent2), var(--accent));
+  background: linear-gradient(90deg, rgba(180, 184, 171, 0.85), var(--accent));
   border-radius: 999px;
   transition: width 0.4s ease;
 }
@@ -2354,12 +2366,12 @@ body.page-checkout-success .main {
 }
 
 .pill-affiliate {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(180, 184, 171, 0.4);
   color: var(--accent);
 }
 
 .pill-direct {
-  background: rgba(25, 23, 36, 0.06);
+  background: rgba(37, 24, 29, 0.06);
   color: var(--muted);
 }
 
@@ -2479,14 +2491,14 @@ body.page-checkout-success .main {
   width: 100%;
   box-sizing: border-box;
   padding: 0.55rem 0.85rem;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   border-radius: 8px;
   font-size: 0.95rem;
-  background: #fff;
+  background: var(--surface);
 }
 
 .admin-orders-search-input:focus {
-  outline: 2px solid rgba(0, 0, 0, 0.16);
+  outline: 2px solid rgba(37, 24, 29, 0.2);
   outline-offset: 1px;
 }
 
@@ -2494,9 +2506,9 @@ body.page-checkout-success .main {
   max-height: min(72vh, 920px);
   overflow-y: auto;
   overflow-x: auto;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .admin-orders-table {
@@ -2508,13 +2520,13 @@ body.page-checkout-success .main {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #fbfbfc;
-  border-bottom: 1px solid var(--hairline);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  background: var(--brand-light);
+  border-bottom: 1px solid var(--hairline-soft);
+  box-shadow: none;
 }
 
 .admin-order-row:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(180, 184, 171, 0.2);
 }
 
 .admin-order-number {
@@ -2570,18 +2582,18 @@ body.page-checkout-success .main {
   font-weight: 600;
   padding: 0.35rem 1.75rem 0.35rem 0.5rem;
   border-radius: 999px;
-  border: 1px solid var(--hairline);
-  background: #fff;
+  border: 1px solid var(--hairline-soft);
+  background: var(--surface);
   cursor: pointer;
   max-width: 11rem;
 }
 
 .admin-order-row .admin-fulfillment-select option[value="0"] {
-  color: #b45309;
+  color: var(--muted);
 }
 
 .admin-order-row .admin-fulfillment-select option[value="1"] {
-  color: #15803d;
+  color: var(--text);
 }
 
 .admin-orders-empty {
@@ -2645,8 +2657,8 @@ body.page-checkout-success .main {
 .admin-order-fulfill-card {
   min-width: min(100%, 260px);
   padding: 1rem 1.15rem;
-  background: #f8f8fa;
-  border: 1px solid var(--hairline);
+  background: var(--brand-light);
+  border: 1px solid var(--hairline-soft);
   border-radius: 10px;
 }
 
@@ -2704,7 +2716,7 @@ body.page-checkout-success .main {
 .admin-switch-track {
   position: absolute;
   inset: 0;
-  background: #cbd5e1;
+  background: rgba(180, 184, 171, 0.65);
   border-radius: 999px;
   transition: background 0.2s ease;
   pointer-events: none;
@@ -2716,7 +2728,7 @@ body.page-checkout-success .main {
 }
 
 .admin-switch-input:checked + .admin-switch-track {
-  background: #16a34a;
+  background: var(--accent);
 }
 
 .admin-switch-thumb {
@@ -2725,9 +2737,9 @@ body.page-checkout-success .main {
   left: 3px;
   width: 24px;
   height: 24px;
-  background: #fff;
+  background: var(--surface);
   border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 2px rgba(37, 24, 29, 0.12);
   transition: transform 0.2s ease;
   pointer-events: none;
 }
@@ -2749,12 +2761,12 @@ body.page-checkout-success .main {
 }
 
 .admin-card {
-  background: #fff;
-  border: 1px solid var(--hairline);
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
   border-radius: 10px;
   padding: 1.2rem 1.35rem;
   margin-bottom: 1rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: none;
 }
 
 .admin-card-title {
@@ -2860,7 +2872,7 @@ body.page-checkout-success .main {
   display: inline-block;
   padding: 0.2rem 0.55rem;
   border-radius: 6px;
-  background: rgba(25, 23, 36, 0.06);
+  background: rgba(37, 24, 29, 0.06);
   font-weight: 600;
   font-size: 0.85rem;
   margin: 0 0 0.35rem;
@@ -2883,7 +2895,7 @@ body.page-checkout-success .main {
 }
 
 .admin-sa-click-row:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: rgba(180, 184, 171, 0.22);
 }
 
 .admin-payout-badge {
@@ -2895,13 +2907,13 @@ body.page-checkout-success .main {
 }
 
 .admin-payout-paid {
-  background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
+  background: rgba(180, 184, 171, 0.45);
+  color: var(--text);
 }
 
 .admin-payout-pending {
-  background: rgba(180, 83, 9, 0.12);
-  color: #b45309;
+  background: rgba(37, 24, 29, 0.06);
+  color: var(--muted);
 }
 
 .admin-aff-orders-h2 {
@@ -2963,7 +2975,7 @@ body.page-checkout-success .main {
 
 code {
   font-size: 0.85em;
-  background: rgba(25, 23, 36, 0.06);
+  background: rgba(180, 184, 171, 0.35);
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
 }
@@ -3004,7 +3016,7 @@ body.affiliate-modal-open {
 .affiliate-modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(25, 23, 36, 0.55);
+  background: rgba(37, 24, 29, 0.4);
 }
 
 .affiliate-modal-panel {
@@ -3012,10 +3024,10 @@ body.affiliate-modal-open {
   width: min(100%, 26rem);
   max-height: min(90vh, 40rem);
   overflow-y: auto;
-  background: #ffffff;
+  background: var(--surface);
   border-radius: 16px;
-  border: 1px solid var(--hairline);
-  box-shadow: 0 24px 64px rgba(25, 23, 36, 0.18);
+  border: 1px solid var(--hairline-soft);
+  box-shadow: 0 12px 40px rgba(37, 24, 29, 0.08);
   padding: 1.5rem 1.5rem 1.35rem;
 }
 
@@ -3027,7 +3039,7 @@ body.affiliate-modal-open {
   height: 2.25rem;
   border: none;
   border-radius: 10px;
-  background: rgba(25, 23, 36, 0.06);
+  background: rgba(180, 184, 171, 0.35);
   color: var(--text);
   font-size: 1.35rem;
   line-height: 1;
@@ -3035,7 +3047,7 @@ body.affiliate-modal-open {
 }
 
 .affiliate-modal-close:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(37, 24, 29, 0.08);
   color: var(--accent);
 }
 
@@ -3059,9 +3071,9 @@ body.affiliate-modal-open {
   padding: 0.5rem 0.65rem;
   border-radius: 10px;
   font-size: 0.875rem;
-  background: rgba(196, 61, 92, 0.1);
-  color: #9b2340;
-  border: 1px solid rgba(196, 61, 92, 0.25);
+  background: rgba(92, 58, 56, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(92, 58, 56, 0.22);
 }
 
 .affiliate-field {
@@ -3191,7 +3203,7 @@ body.affiliate-modal-open {
 .danger-zone .delete-btn {
   margin-top: 1rem;
   background: var(--danger);
-  color: #fff;
+  color: var(--on-primary);
   border-color: transparent;
   font-weight: 600;
 }
@@ -3204,8 +3216,8 @@ body.affiliate-modal-open {
   margin: 0.75rem 0 0;
   padding: 0.65rem 0.75rem;
   border-radius: var(--radius);
-  background: rgba(180, 35, 24, 0.08);
-  border: 1px solid rgba(180, 35, 24, 0.2);
+  background: rgba(92, 58, 56, 0.1);
+  border: 1px solid rgba(92, 58, 56, 0.22);
   color: var(--text);
   font-size: 0.9rem;
   line-height: 1.45;
@@ -3248,7 +3260,7 @@ body.affiliate-modal-open {
 
 .affiliate-delete-actions .delete-btn {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-primary);
   border-color: transparent;
   font-weight: 600;
 }
@@ -3324,10 +3336,10 @@ body.affiliate-terms-modal-open {
   gap: 0.75rem 1.25rem;
   margin: 0 0 1.25rem;
   padding: 0.65rem 0;
-  border-bottom: 1px solid var(--hairline);
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--header-bg);
+  backdrop-filter: none;
+  box-shadow: none;
 }
 
 .affiliate-dash-header-brand {
@@ -3382,12 +3394,14 @@ body.affiliate-terms-modal-open {
 }
 
 .affiliate-dash-nav a:hover {
-  color: var(--accent);
+  color: var(--text);
+  opacity: 0.88;
 }
 
 .affiliate-dash-nav a.is-active {
   color: var(--text);
   border-bottom-color: var(--accent);
+  font-weight: 700;
 }
 
 .affiliate-dash-header-profile {
@@ -3578,11 +3592,11 @@ body.affiliate-terms-modal-open {
 
 .product-thumb-btn {
   padding: 0;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
-  background: #fff;
+  background: var(--surface);
   line-height: 0;
   opacity: 0.92;
   transition: border-color 0.15s ease, opacity 0.15s ease;
@@ -3591,7 +3605,7 @@ body.affiliate-terms-modal-open {
 .product-thumb-btn:hover,
 .product-thumb-btn:focus-visible {
   opacity: 1;
-  border-color: rgba(0, 0, 0, 0.2);
+  border-color: rgba(37, 24, 29, 0.2);
   outline: none;
 }
 
@@ -3628,8 +3642,8 @@ body.affiliate-terms-modal-open {
   font-weight: 600;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.07);
-  color: var(--muted);
+  background: rgba(180, 184, 171, 0.4);
+  color: var(--text);
 }
 
 /* Creative library (Listening Room dashboard + admin) */
@@ -3662,15 +3676,15 @@ body.affiliate-terms-modal-open {
   min-width: 0;
   padding: 0.65rem;
   border-radius: 12px;
-  border: 1px solid var(--hairline);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--hairline-soft);
+  background: var(--surface);
 }
 
 .creative-library-preview {
   aspect-ratio: 1;
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(25, 23, 36, 0.35);
+  background: rgba(37, 24, 29, 0.35);
   margin-bottom: 0.65rem;
 }
 
@@ -3730,11 +3744,11 @@ body.affiliate-terms-modal-open {
 }
 
 .admin-creative-upload-card {
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-soft);
   border-radius: 12px;
   padding: 1.15rem 1.25rem 1.35rem;
   margin-bottom: 1.75rem;
-  background: #fbfbfc;
+  background: var(--brand-light);
   max-width: 36rem;
 }
 
@@ -3808,9 +3822,9 @@ body.affiliate-terms-modal-open {
   min-width: 0;
   padding: 0.75rem;
   border-radius: 12px;
-  border: 1px solid var(--hairline);
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--hairline-soft);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .admin-creative-asset-card .admin-creative-preview {
@@ -3818,7 +3832,7 @@ body.affiliate-terms-modal-open {
   aspect-ratio: 1;
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(25, 23, 36, 0.06);
+  background: rgba(37, 24, 29, 0.06);
   margin-bottom: 0.65rem;
 }
 
@@ -3840,8 +3854,8 @@ body.affiliate-terms-modal-open {
   letter-spacing: 0.04em;
   padding: 0.2rem 0.45rem;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: rgba(37, 24, 29, 0.82);
+  color: var(--on-primary);
 }
 
 .admin-creative-asset-title {
@@ -3884,9 +3898,9 @@ body.affiliate-terms-modal-open {
   margin: 0.5rem 0 0;
   padding: 1.25rem 1rem;
   text-align: center;
-  border: 1px dashed var(--hairline);
+  border: 1px dashed var(--hairline-soft);
   border-radius: 10px;
-  background: #fafafa;
+  background: var(--brand-light);
 }
 
 .inline-form {
@@ -3895,13 +3909,13 @@ body.affiliate-terms-modal-open {
 }
 
 .admin-creative-delete-btn {
-  color: #9b2340;
-  border-color: rgba(196, 61, 92, 0.45);
+  color: var(--danger);
+  border-color: rgba(92, 58, 56, 0.45);
 }
 
 .admin-creative-delete-btn:hover {
-  background: rgba(196, 61, 92, 0.1);
-  color: #7a1c33;
+  background: rgba(92, 58, 56, 0.1);
+  color: var(--danger);
 }
 
 /* ——— Shop: full-width hero banner ——— */
@@ -3911,9 +3925,9 @@ body.affiliate-terms-modal-open {
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
   margin-top: -1.5rem;
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline-soft);
   line-height: 0;
-  background: #ffffff;
+  background: var(--brand-light);
 }
 
 .shop-hero-banner-img {
@@ -4261,7 +4275,7 @@ body.listening-room-program .main {
 .lr-calc-mode.is-selected {
   border-color: var(--text);
   background: var(--text);
-  color: #fff;
+  color: var(--on-primary);
 }
 
 .lr-calc-mode input {
@@ -4316,7 +4330,7 @@ body.cookie-banner-visible {
   background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--hairline);
   border-radius: 10px;
-  box-shadow: 0 -4px 24px rgba(25, 23, 36, 0.08);
+  box-shadow: 0 -4px 24px rgba(37, 24, 29, 0.08);
 }
 
 .cookie-banner-text {
@@ -4748,7 +4762,7 @@ body.cart-upsell-modal-open {
 .cart-upsell-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(13, 13, 13, 0.45);
+  background: rgba(37, 24, 29, 0.35);
 }
 
 .cart-upsell-panel {
@@ -4756,10 +4770,10 @@ body.cart-upsell-modal-open {
   width: min(100%, 52rem);
   max-height: min(92vh, 36rem);
   overflow: auto;
-  background: #fff;
-  border: 1px solid var(--hairline);
+  background: var(--surface);
+  border: 1px solid var(--hairline-soft);
   border-radius: 12px;
-  box-shadow: 0 24px 64px rgba(25, 23, 36, 0.16);
+  box-shadow: 0 12px 40px rgba(37, 24, 29, 0.08);
 }
 
 .cart-upsell-x {
@@ -4771,7 +4785,7 @@ body.cart-upsell-modal-open {
   height: 2.25rem;
   border: none;
   border-radius: 8px;
-  background: rgba(13, 13, 13, 0.06);
+  background: rgba(180, 184, 171, 0.35);
   color: var(--text);
   font-size: 1.35rem;
   line-height: 1;
@@ -4779,7 +4793,7 @@ body.cart-upsell-modal-open {
 }
 
 .cart-upsell-x:hover {
-  background: rgba(0, 0, 0, 0.1);
+  background: rgba(37, 24, 29, 0.08);
 }
 
 .cart-upsell-layout {
