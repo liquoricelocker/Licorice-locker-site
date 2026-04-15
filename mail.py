@@ -177,8 +177,8 @@ def _wrap_brand_html(title: str, inner_html: str) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width" /><title>{esc_title}</title></head>
-<body style="margin:0;padding:0;background-color:#f1f3f9;font-family:{font_stack};">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f1f3f9;padding:28px 14px;">
+<body style="margin:0;padding:0;background-color:#ffffff;font-family:{font_stack};">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#ffffff;padding:28px 14px;">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:560px;background-color:#ffffff;border-radius:2px;overflow:hidden;border:1px solid rgba(180,184,171,0.55);">
         <tr><td style="padding:28px 28px 12px 28px;text-align:center;">

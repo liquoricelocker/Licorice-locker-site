@@ -1,8 +1,8 @@
 :root {
-  /* Brand: Coffee Bean · Ash Grey · Ghost White — ~60% light / 30% neutral / 10% deep */
+  /* Brand: Coffee Bean · Ash Grey · white field — ~60% light / 30% neutral / 10% deep */
   --brand-deep: #25181d;
   --brand-neutral: #b4b8ab;
-  --brand-light: #f1f3f9;
+  --brand-light: #ffffff;
   --bg: var(--brand-light);
   --header-bg: var(--brand-light);
   --bg-elevated: #ffffff;
