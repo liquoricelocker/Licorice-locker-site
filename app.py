@@ -55,10 +55,10 @@ from commissions import (
     summarize_month,
 )
 from mail import (
-    send_order_confirmation,
     send_order_fulfilled_notification,
+    send_order_receipt_email_fallback,
     send_password_reset_email,
-    send_resend_post_purchase_emails,
+    send_post_purchase_order_emails,
 )
 
 
@@ -718,22 +718,6 @@ def refresh_commission_snapshot(conn: sqlite3.Connection, affiliate_id: int, yea
         """,
         (affiliate_id, ym, sales_count, rate_next, total_cents, commission_cents, bonus_cents),
     )
-
-
-def order_items_lines(conn: sqlite3.Connection, order_id: int) -> str:
-    rows = conn.execute(
-        """
-        SELECT oi.quantity, oi.unit_price_cents, p.name
-        FROM order_items oi
-        JOIN products p ON p.id = oi.product_id
-        WHERE oi.order_id = ?
-        """,
-        (order_id,),
-    ).fetchall()
-    parts = []
-    for r in rows:
-        parts.append(f"  - {r['name']} x{r['quantity']} @ {database.format_money(r['unit_price_cents'])}")
-    return "\n".join(parts)
 
 
 def _cart_line_items(conn: sqlite3.Connection) -> Tuple[List[Dict[str, Any]], int]:
@@ -1718,6 +1702,19 @@ def _stripe_process_paid_return(csid: str):
                 (oid_e,),
             ).fetchone()
             total = int((row or existing)["total_cents"] or 0)
+            receipt_sent_flag = bool(row and row["receipt_sent"])
+            if not receipt_sent_flag:
+                ok_em = send_post_purchase_order_emails(oid_e)
+                if not ok_em:
+                    ok_em = send_order_receipt_email_fallback(oid_e)
+                if ok_em:
+                    database.mark_order_receipt_sent(conn, oid_e)
+                    receipt_sent_flag = True
+                    app.logger.info(
+                        "stripe_idempotent_email_recovered order_id=%s order_number=%s",
+                        oid_e,
+                        existing["order_number"],
+                    )
             prows = _order_success_product_rows(conn, oid_e)
             app.logger.info(
                 "stripe_checkout_idempotent_replay order_id=%s order_number=%s session_id=%s",
@@ -1728,7 +1725,7 @@ def _stripe_process_paid_return(csid: str):
             session["checkout_success_view"] = {
                 "order_number": str(existing["order_number"]),
                 "total_cents": total,
-                "receipt_sent": bool(row and row["receipt_sent"]),
+                "receipt_sent": receipt_sent_flag,
                 "detail": "Thanks again — we have your order on record.",
                 "is_new_order": False,
                 "products": prows,
@@ -1902,7 +1899,6 @@ def _stripe_process_paid_return(csid: str):
                 dt = _now_utc()
                 apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
                 refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
-            lines = order_items_lines(conn, oid)
     else:
         try:
             pid = int(meta.get("product_id") or 0)
@@ -2020,13 +2016,10 @@ def _stripe_process_paid_return(csid: str):
                 dt = _now_utc()
                 apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
                 refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
-            lines = order_items_lines(conn, oid)
 
-    receipt_ok = send_resend_post_purchase_emails(oid)
+    receipt_ok = send_post_purchase_order_emails(oid)
     if not receipt_ok:
-        receipt_ok = send_order_confirmation(
-            email, order_number, lines, database.format_money(total_with_shipping)
-        )
+        receipt_ok = send_order_receipt_email_fallback(oid)
     if receipt_ok:
         with database.get_db() as conn:
             database.mark_order_receipt_sent(conn, oid)
@@ -2812,13 +2805,16 @@ def admin_order_fulfillment(order_id: int):
                 (order_id,),
             )
         if fulfilled and not was_fulfilled:
-            try:
-                send_order_fulfilled_notification(
-                    str(row["customer_email"] or "").strip(),
-                    str(row["order_number"] or ""),
+            ok_ff = send_order_fulfilled_notification(
+                str(row["customer_email"] or "").strip(),
+                str(row["order_number"] or ""),
+            )
+            if not ok_ff:
+                app.logger.warning(
+                    "fulfilled_notification_email_failed order_id=%s order_number=%s",
+                    order_id,
+                    row["order_number"],
                 )
-            except Exception:
-                pass
         if return_to == "detail":
             r2 = conn.execute("SELECT order_number FROM orders WHERE id = ?", (order_id,)).fetchone()
             if r2 and r2["order_number"]:
