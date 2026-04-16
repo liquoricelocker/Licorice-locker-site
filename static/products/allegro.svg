@@ -2,8 +2,8 @@
   <title id="t">Allegra</title>
   <defs>
     <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#e5b93c;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#e07a2f;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#25181d;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b4b8ab;stop-opacity:1" />
     </linearGradient>
   </defs>
   <rect width="200" height="120" rx="14" fill="url(#g)"/>

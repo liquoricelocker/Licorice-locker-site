@@ -168,7 +168,7 @@ def load_order_email_context(order_id: int) -> Optional[OrderEmailContext]:
 
 
 def _wrap_brand_html(title: str, inner_html: str) -> str:
-    """Shared shell: white canvas, warm film accents — matches site. Inline styles only."""
+    """Shared shell: Ghost White field, white card, Coffee Bean type — matches site. Inline styles only."""
     esc_title = html_module.escape(title)
     base = html_module.escape(_public_site_base())
     font_stack = (
@@ -180,17 +180,17 @@ def _wrap_brand_html(title: str, inner_html: str) -> str:
 <body style="margin:0;padding:0;background-color:#ffffff;font-family:{font_stack};">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#ffffff;padding:28px 14px;">
     <tr><td align="center">
-      <table role="presentation" width="100%" style="max-width:560px;background-color:#ffffff;border-radius:8px;overflow:hidden;border:1px solid rgba(58,46,42,0.1);box-shadow:0 10px 30px rgba(58,46,42,0.06);">
+      <table role="presentation" width="100%" style="max-width:560px;background-color:#ffffff;border-radius:2px;overflow:hidden;border:1px solid rgba(180,184,171,0.55);">
         <tr><td style="padding:28px 28px 12px 28px;text-align:center;">
-          <p style="margin:0 0 10px 0;font-size:11px;letter-spacing:0.22em;font-weight:700;text-transform:uppercase;color:#3a2e2a;">Licorice Locker</p>
+          <p style="margin:0 0 10px 0;font-size:11px;letter-spacing:0.22em;font-weight:700;text-transform:uppercase;color:#25181d;">Licorice Locker</p>
           <img src="{html_module.escape(_email_logo_url())}" alt="" width="200" height="auto" style="max-width:200px;height:auto;display:block;margin:0 auto;border:0;" />
         </td></tr>
-        <tr><td style="padding:8px 28px 32px 28px;color:#3a2e2a;font-size:16px;line-height:1.55;">
+        <tr><td style="padding:8px 28px 32px 28px;color:#25181d;font-size:16px;line-height:1.55;">
 {inner_html}
         </td></tr>
-        <tr><td style="padding:16px 28px 24px 28px;border-top:1px solid rgba(224,122,47,0.2);color:rgba(58,46,42,0.58);font-size:12px;line-height:1.5;text-align:center;">
+        <tr><td style="padding:16px 28px 24px 28px;border-top:1px solid rgba(180,184,171,0.45);color:rgba(37,24,29,0.58);font-size:12px;line-height:1.5;text-align:center;">
           <p style="margin:0;">The Listening Room</p>
-          <p style="margin:10px 0 0 0;"><a href="{base}" style="color:#3a2e2a;text-decoration:underline;text-underline-offset:2px;">Visit the shop</a></p>
+          <p style="margin:10px 0 0 0;"><a href="{base}" style="color:#25181d;text-decoration:underline;text-underline-offset:2px;">Visit the shop</a></p>
         </td></tr>
       </table>
     </td></tr>
@@ -207,25 +207,25 @@ def render_customer_email(order: OrderEmailContext) -> Tuple[str, str]:
     for name, qty, line_c in order.lines:
         ld = database.format_money(line_c)
         rows_html.append(
-            f'<tr><td style="padding:10px 0;border-bottom:1px solid rgba(224,122,47,0.2);">'
-            f'<span style="color:#3a2e2a;">{html_module.escape(name)}</span> '
-            f'<span style="color:rgba(58,46,42,0.55);">× {qty}</span></td>'
-            f'<td style="padding:10px 0;border-bottom:1px solid rgba(224,122,47,0.2);text-align:right;color:#3a2e2a;font-weight:600;">{html_module.escape(ld)}</td></tr>'
+            f'<tr><td style="padding:10px 0;border-bottom:1px solid rgba(180,184,171,0.45);">'
+            f'<span style="color:#25181d;">{html_module.escape(name)}</span> '
+            f'<span style="color:rgba(37,24,29,0.55);">× {qty}</span></td>'
+            f'<td style="padding:10px 0;border-bottom:1px solid rgba(180,184,171,0.45);text-align:right;color:#25181d;font-weight:600;">{html_module.escape(ld)}</td></tr>'
         )
         plain_lines.append(f"  - {name} x{qty}  {ld}")
     table = (
         f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;">'
         f'{"".join(rows_html)}'
-        f'<tr><td colspan="2" style="padding-top:16px;font-size:18px;font-weight:700;color:#3a2e2a;">Total {html_module.escape(total)}</td></tr>'
+        f'<tr><td colspan="2" style="padding-top:16px;font-size:18px;font-weight:700;color:#25181d;">Total {html_module.escape(total)}</td></tr>'
         f"</table>"
     )
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:22px;font-weight:600;color:#3a2e2a;letter-spacing:0.02em;">Order confirmed</h1>
-          <p style="margin:0 0 16px 0;color:rgba(58,46,42,0.62);">Thank you — your music-inspired piece is on its way from our studio.</p>
-          <p style="margin:0 0 8px 0;color:rgba(58,46,42,0.55);font-size:13px;text-transform:uppercase;letter-spacing:0.08em;">Order number</p>
-          <p style="margin:0 0 20px 0;font-size:18px;color:#3a2e2a;font-weight:600;">{html_module.escape(order.order_number)}</p>
+          <h1 style="margin:0 0 12px 0;font-size:22px;font-weight:600;color:#25181d;letter-spacing:0.02em;">Order confirmed</h1>
+          <p style="margin:0 0 16px 0;color:rgba(37,24,29,0.62);">Thank you — your music-inspired piece is on its way from our studio.</p>
+          <p style="margin:0 0 8px 0;color:rgba(37,24,29,0.55);font-size:13px;text-transform:uppercase;letter-spacing:0.08em;">Order number</p>
+          <p style="margin:0 0 20px 0;font-size:18px;color:#25181d;font-weight:600;">{html_module.escape(order.order_number)}</p>
           {table}
-          <p style="margin:20px 0 0 0;color:rgba(58,46,42,0.62);">We&apos;ll notify you when your order ships.</p>
+          <p style="margin:20px 0 0 0;color:rgba(37,24,29,0.62);">We&apos;ll notify you when your order ships.</p>
 """
     plain = (
         f"Licorice Locker — Order confirmed\n\n"
@@ -246,11 +246,11 @@ def render_admin_email(order: OrderEmailContext) -> Tuple[str, str]:
         for n, q, lc in order.lines
     )
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:20px;color:#3a2e2a;">New order</h1>
-          <p style="margin:0;color:rgba(58,46,42,0.62);"><strong>Order</strong> {html_module.escape(order.order_number)} · <strong>Total</strong> {html_module.escape(total)}</p>
-          <ul style="margin:16px 0;padding-left:20px;color:#3a2e2a;">{rows or "<li>(no lines)</li>"}</ul>
-          <p style="margin:8px 0;color:rgba(58,46,42,0.62);"><strong>Customer</strong> {html_module.escape(order.customer_email)}</p>
-          <p style="margin:8px 0;color:rgba(58,46,42,0.62);"><strong>Affiliate</strong> {html_module.escape(aff)}</p>
+          <h1 style="margin:0 0 12px 0;font-size:20px;color:#25181d;">New order</h1>
+          <p style="margin:0;color:rgba(37,24,29,0.62);"><strong>Order</strong> {html_module.escape(order.order_number)} · <strong>Total</strong> {html_module.escape(total)}</p>
+          <ul style="margin:16px 0;padding-left:20px;color:#25181d;">{rows or "<li>(no lines)</li>"}</ul>
+          <p style="margin:8px 0;color:rgba(37,24,29,0.62);"><strong>Customer</strong> {html_module.escape(order.customer_email)}</p>
+          <p style="margin:8px 0;color:rgba(37,24,29,0.62);"><strong>Affiliate</strong> {html_module.escape(aff)}</p>
 """
     plain = (
         f"New order {order.order_number}\nTotal: {total}\nCustomer: {order.customer_email}\nAffiliate: {aff}\n"
@@ -263,11 +263,11 @@ def render_affiliate_email(order: OrderEmailContext) -> Tuple[str, str]:
     comm = database.format_money(order.commission_cents)
     summary = ", ".join(f"{n} ×{q}" for n, q, _ in order.lines) or "Order"
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:20px;color:#3a2e2a;">You made a sale</h1>
-          <p style="margin:0 0 12px 0;color:rgba(58,46,42,0.62);">Someone ordered through your Listening Room.</p>
-          <p style="margin:0;color:#3a2e2a;"><strong>{html_module.escape(summary)}</strong></p>
-          <p style="margin:16px 0 0 0;font-size:18px;color:#3a2e2a;">Commission earned: <strong>{html_module.escape(comm)}</strong></p>
-          <p style="margin:12px 0 0 0;color:rgba(58,46,42,0.55);font-size:14px;">Order {html_module.escape(order.order_number)}</p>
+          <h1 style="margin:0 0 12px 0;font-size:20px;color:#25181d;">You made a sale</h1>
+          <p style="margin:0 0 12px 0;color:rgba(37,24,29,0.62);">Someone ordered through your Listening Room.</p>
+          <p style="margin:0;color:#25181d;"><strong>{html_module.escape(summary)}</strong></p>
+          <p style="margin:16px 0 0 0;font-size:18px;color:#25181d;">Commission earned: <strong>{html_module.escape(comm)}</strong></p>
+          <p style="margin:12px 0 0 0;color:rgba(37,24,29,0.55);font-size:14px;">Order {html_module.escape(order.order_number)}</p>
 """
     plain = f"You made a sale\n\n{summary}\nCommission: {comm}\nOrder: {order.order_number}\n"
     return _wrap_brand_html("You made a sale", inner), plain
@@ -506,10 +506,10 @@ def send_order_confirmation(
         return False
     esc = html_module.escape
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:22px;color:#3a2e2a;">Order confirmed</h1>
-          <p style="margin:0 0 8px 0;color:#3a2e2a;">Order <strong>{esc(order_number)}</strong></p>
-          <pre style="white-space:pre-wrap;font-family:inherit;color:rgba(58,46,42,0.62);">{esc(lines)}</pre>
-          <p style="margin:16px 0 0 0;color:#3a2e2a;"><strong>Total {esc(total_display)}</strong></p>
+          <h1 style="margin:0 0 12px 0;font-size:22px;color:#25181d;">Order confirmed</h1>
+          <p style="margin:0 0 8px 0;color:#25181d;">Order <strong>{esc(order_number)}</strong></p>
+          <pre style="white-space:pre-wrap;font-family:inherit;color:rgba(37,24,29,0.62);">{esc(lines)}</pre>
+          <p style="margin:16px 0 0 0;color:#25181d;"><strong>Total {esc(total_display)}</strong></p>
 """
     html_b = _wrap_brand_html("Order confirmed", inner)
     plain = (
@@ -536,10 +536,10 @@ def send_password_reset_email(to_addr: str, reset_url: str) -> bool:
         return False
     esc = html_module.escape
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:20px;color:#3a2e2a;">Reset your password</h1>
-          <p style="color:rgba(58,46,42,0.62);">Open the link below to choose a new password (valid for a limited time).</p>
-          <p style="margin:24px 0;"><a href="{esc(reset_url)}" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#E07A2F,#D94C3D);color:#ffffff;text-decoration:none;border-radius:8px;font-weight:600;box-shadow:0 4px 18px rgba(224,122,47,0.22);">Reset password</a></p>
-          <p style="color:rgba(58,46,42,0.55);font-size:13px;">If you did not request this, ignore this email.</p>
+          <h1 style="margin:0 0 12px 0;font-size:20px;color:#25181d;">Reset your password</h1>
+          <p style="color:rgba(37,24,29,0.62);">Open the link below to choose a new password (valid for a limited time).</p>
+          <p style="margin:24px 0;"><a href="{esc(reset_url)}" style="display:inline-block;padding:12px 24px;background:#25181d;color:#ffffff;text-decoration:none;border-radius:2px;font-weight:600;">Reset password</a></p>
+          <p style="color:rgba(37,24,29,0.55);font-size:13px;">If you did not request this, ignore this email.</p>
 """
     html_b = _wrap_brand_html("Password reset", inner)
     plain = (
@@ -565,13 +565,13 @@ def send_shipping_notification(
     if not is_valid_email(customer_email):
         return False
     esc = html_module.escape
-    extra = f"<p style='color:rgba(58,46,42,0.62);'>Carrier / notes: {esc(carrier_hint)}</p>" if carrier_hint else ""
+    extra = f"<p style='color:rgba(37,24,29,0.62);'>Carrier / notes: {esc(carrier_hint)}</p>" if carrier_hint else ""
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:20px;color:#3a2e2a;">Your order has shipped</h1>
-          <p style="color:rgba(58,46,42,0.62);">Order <strong>{esc(order_number)}</strong></p>
-          <p style="font-size:18px;color:#3a2e2a;font-weight:600;">Tracking: {esc(tracking_number)}</p>
+          <h1 style="margin:0 0 12px 0;font-size:20px;color:#25181d;">Your order has shipped</h1>
+          <p style="color:rgba(37,24,29,0.62);">Order <strong>{esc(order_number)}</strong></p>
+          <p style="font-size:18px;color:#25181d;font-weight:600;">Tracking: {esc(tracking_number)}</p>
           {extra}
-          <p style="color:rgba(58,46,42,0.62);">Thank you for supporting our artists and The Listening Room.</p>
+          <p style="color:rgba(37,24,29,0.62);">Thank you for supporting our artists and The Listening Room.</p>
 """
     html_b = _wrap_brand_html("Shipped", inner)
     plain = (
@@ -593,9 +593,9 @@ def send_order_fulfilled_notification(customer_email: str, order_number: str) ->
         return False
     esc = html_module.escape
     inner = f"""
-          <h1 style="margin:0 0 12px 0;font-size:20px;color:#3a2e2a;">Order fulfilled</h1>
-          <p style="color:rgba(58,46,42,0.62);">Order <strong>{esc(order_number)}</strong> is marked as fulfilled.</p>
-          <p style="color:#3a2e2a;">Thank you for your purchase.</p>
+          <h1 style="margin:0 0 12px 0;font-size:20px;color:#25181d;">Order fulfilled</h1>
+          <p style="color:rgba(37,24,29,0.62);">Order <strong>{esc(order_number)}</strong> is marked as fulfilled.</p>
+          <p style="color:#25181d;">Thank you for your purchase.</p>
 """
     html_b = _wrap_brand_html("Fulfilled", inner)
     plain = f"Order fulfilled — {order_number}\n\nThank you for your purchase.\n"

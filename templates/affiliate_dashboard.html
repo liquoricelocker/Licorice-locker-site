@@ -192,18 +192,18 @@
         datasets: [{
           label: 'Cumulative revenue ($)',
           data: data.cumulative.values,
-          borderColor: '#e07a2f',
-          backgroundColor: 'rgba(224, 122, 47, 0.12)',
+          borderColor: '#25181d',
+          backgroundColor: 'rgba(37,24,29,0.08)',
           fill: true,
           tension: 0.25,
         }],
       },
       options: {
         responsive: true,
-        plugins: { legend: { labels: { color: 'rgba(58,46,42,0.55)' } } },
+        plugins: { legend: { labels: { color: 'rgba(37,24,29,0.55)' } } },
         scales: {
-          x: { ticks: { color: 'rgba(58,46,42,0.55)' }, grid: { color: 'rgba(224,122,47,0.15)' } },
-          y: { ticks: { color: 'rgba(58,46,42,0.55)' }, grid: { color: 'rgba(224,122,47,0.15)' } },
+          x: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
+          y: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
         },
       },
     });
@@ -216,21 +216,21 @@
           {
             label: 'Revenue ($)',
             data: m.map(r => r.total_dollars),
-            backgroundColor: 'rgba(217, 76, 61, 0.75)',
+            backgroundColor: 'rgba(37, 24, 29, 0.82)',
           },
           {
             label: 'Est. commission ($)',
             data: m.map(r => r.commission_dollars),
-            backgroundColor: 'rgba(122, 125, 78, 0.65)',
+            backgroundColor: 'rgba(180, 184, 171, 0.85)',
           },
         ],
       },
       options: {
         responsive: true,
-        plugins: { legend: { labels: { color: 'rgba(58,46,42,0.55)' } } },
+        plugins: { legend: { labels: { color: 'rgba(37,24,29,0.55)' } } },
         scales: {
-          x: { ticks: { color: 'rgba(58,46,42,0.55)' }, grid: { color: 'rgba(224,122,47,0.15)' } },
-          y: { ticks: { color: 'rgba(58,46,42,0.55)' }, grid: { color: 'rgba(224,122,47,0.15)' } },
+          x: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
+          y: { ticks: { color: 'rgba(37,24,29,0.55)' }, grid: { color: 'rgba(180,184,171,0.35)' } },
         },
       },
     });
