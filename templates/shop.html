@@ -52,6 +52,10 @@
 </section>
 {% endif %}
 
+{% if sound_wave_product or riff_product %}
+{% include '_link_series_banner.html' %}
+{% endif %}
+
 {% if riff_product %}
 <section class="riff-showcase" aria-label="Riff product">
   <div class="riff-showcase-inner">

@@ -3937,11 +3937,62 @@ body.affiliate-terms-modal-open {
   vertical-align: top;
 }
 
+/* Link Series — build-your-shelf promo (shop, Listening Room, affiliate landing) */
+.link-series-promo {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  margin-bottom: 1.5rem;
+  padding: 0 0 0.5rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--bg-elevated);
+}
+
+.link-series-promo-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.link-series-promo-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  line-height: 0;
+  border-radius: 0;
+}
+
+.link-series-promo-caption {
+  padding: 1.1rem 0 0.35rem;
+  text-align: left;
+}
+
+.link-series-promo-title {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 3.5vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.link-series-promo-sub {
+  margin: 0;
+  font-family: var(--font);
+  font-size: clamp(0.9rem, 2vw, 1.05rem);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 /* Shop home: continuous gallery — no hairlines between hero / showcases / grid (header & footer unchanged) */
 .page-shop .shop-hero-banner {
   border-bottom: none;
 }
 
+.page-shop .link-series-promo,
 .page-shop .soundwave-showcase,
 .page-shop .riff-showcase,
 .page-shop .harmony-showcase,
@@ -3949,6 +4000,16 @@ body.affiliate-terms-modal-open {
 .page-shop .allegro-showcase {
   border-bottom: none;
   background: transparent;
+}
+
+.affiliate-landing .link-series-promo {
+  border-bottom: 1px solid var(--hairline-soft);
+  background: var(--bg);
+}
+
+.affiliate-landing .link-series-promo-inner {
+  padding-left: clamp(1rem, 4vw, 1.5rem);
+  padding-right: clamp(1rem, 4vw, 1.5rem);
 }
 
 .page-shop .product-grid {
