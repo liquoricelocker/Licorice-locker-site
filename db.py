@@ -581,6 +581,8 @@ _PRODUCT_IMAGE_SEEDS: Dict[str, Tuple[Tuple[str, int, str], ...]] = {
         ("riff-feature-03.png", 2, "gallery"),
         ("riff-feature-04.png", 3, "gallery"),
         ("riff-feature-05.png", 4, "gallery"),
+        ("riff-feature-06.png", 5, "gallery"),
+        ("riff-feature-07.png", 6, "gallery"),
     ),
     "harmony": (
         ("harmony-feature-01.png", 0, "banner"),
@@ -588,12 +590,21 @@ _PRODUCT_IMAGE_SEEDS: Dict[str, Tuple[Tuple[str, int, str], ...]] = {
         ("harmony-feature-03.png", 2, "gallery"),
         ("harmony-feature-04.png", 3, "gallery"),
         ("harmony-feature-05.png", 4, "gallery"),
+        ("harmony-feature-06.png", 5, "gallery"),
     ),
     "melody": (
         ("melody-feature-01.png", 0, "banner"),
         ("melody-feature-02.png", 1, "gallery"),
         ("melody-feature-03.png", 2, "gallery"),
         ("melody-feature-04.png", 3, "gallery"),
+        ("melody-feature-05.png", 4, "gallery"),
+        ("melody-feature-06.png", 5, "gallery"),
+        ("melody-feature-07.png", 6, "gallery"),
+        ("melody-feature-08.png", 7, "gallery"),
+        ("melody-feature-09.png", 8, "gallery"),
+        ("melody-feature-10.png", 9, "gallery"),
+        ("melody-feature-11.png", 10, "gallery"),
+        ("melody-feature-12.png", 11, "gallery"),
     ),
     "allegro": (
         ("allegra-feature-01.png", 0, "banner"),
@@ -601,6 +612,12 @@ _PRODUCT_IMAGE_SEEDS: Dict[str, Tuple[Tuple[str, int, str], ...]] = {
         ("allegra-feature-03.png", 2, "gallery"),
         ("allegra-feature-04.png", 3, "gallery"),
         ("allegra-feature-05.png", 4, "gallery"),
+        ("allegra-feature-06.png", 5, "gallery"),
+        ("allegra-feature-07.png", 6, "gallery"),
+        ("allegra-feature-08.png", 7, "gallery"),
+        ("allegra-feature-09.png", 8, "gallery"),
+        ("allegra-feature-10.png", 9, "gallery"),
+        ("allegra-feature-11.png", 10, "gallery"),
     ),
 }
 
