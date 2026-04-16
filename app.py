@@ -41,6 +41,9 @@ import stripe
 
 import db as database
 from tracking import client_ip_from_request, device_class_from_user_agent, geo_lookup, ip_fingerprint
+
+# Product detail hero + thumbnail stack: show at most this many images (ordered by sort_order).
+PRODUCT_DETAIL_MAX_IMAGES = 5
 from commissions import (
     COMMISSION_TIERS,
     EARNINGS_DISPLAY_NZD,
@@ -1161,7 +1164,8 @@ def product_detail(slug: str):
         affiliate_slug = request.cookies.get("licorice_affiliate_slug")
         affiliate_row = _affiliate_from_cookie(conn, affiliate_slug) if affiliate_slug else None
         pid = int(product["id"])
-        product_images = database.list_product_images(conn, pid)
+        rows = database.list_product_images(conn, pid)
+        product_images = rows[:PRODUCT_DETAIL_MAX_IMAGES]
     return render_template(
         "product_detail.html",
         product=product,
