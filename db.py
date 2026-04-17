@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import sqlite3
@@ -23,6 +24,44 @@ def _resolved_db_path() -> Path:
 
 
 DB_PATH = _resolved_db_path()
+
+
+def normalize_email(email: Optional[str]) -> str:
+    """Return a single canonical form for lookups and storage: strip, NFKC, case-fold.
+
+    SQLite ``TEXT`` equality is case-sensitive; without normalization, sign-in can fail
+    when the stored address differs only by case or stray whitespace from the typed value.
+    """
+    if email is None:
+        return ""
+    s = str(email).strip()
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    return s.casefold()
+
+
+def _migrate_normalize_user_emails(db: sqlite3.Connection) -> None:
+    """Backfill: store emails in normalized form. Idempotent; logs duplicates that need manual fix."""
+    log = logging.getLogger(__name__)
+    rows = db.execute("SELECT id, email FROM users").fetchall()
+    for r in rows:
+        uid = int(r["id"])
+        old = r["email"] or ""
+        new = normalize_email(old)
+        if not new:
+            continue
+        if old == new:
+            continue
+        try:
+            db.execute("UPDATE users SET email = ? WHERE id = ?", (new, uid))
+            log.info("Normalized stored email for user id=%s", uid)
+        except sqlite3.IntegrityError:
+            log.warning(
+                "Could not normalize email for user id=%s: target %r already exists; resolve duplicate manually",
+                uid,
+                new,
+            )
 
 
 def get_connection() -> sqlite3.Connection:
@@ -175,6 +214,7 @@ def init_db() -> None:
         _migrate_analytics_geo_columns(db)
         _migrate_orders_geo_columns(db)
         _migrate_affiliate_deletion_log(db)
+        _migrate_normalize_user_emails(db)
         # Align legacy16-sale target with top milestone (25)
         db.execute(
             "UPDATE affiliate_pages SET monthly_sales_target = 25 WHERE IFNULL(monthly_sales_target, 0) = 16"
@@ -1027,7 +1067,17 @@ def delete_creative_asset(db: sqlite3.Connection, asset_id: int) -> Optional[sql
 
 
 def user_by_email(db: sqlite3.Connection, email: str) -> Optional[sqlite3.Row]:
-    return db.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+    norm = normalize_email(email)
+    if not norm:
+        return None
+    row = db.execute("SELECT * FROM users WHERE email = ?", (norm,)).fetchone()
+    if row:
+        return row
+    # Legacy rows created before normalization (mixed-case storage)
+    return db.execute(
+        "SELECT * FROM users WHERE lower(trim(email)) = ?",
+        (norm.lower(),),
+    ).fetchone()
 
 
 def allocate_unique_affiliate_code_and_slug(
@@ -1067,7 +1117,7 @@ def create_affiliate_signup(
     last_name: str,
 ) -> int:
     """Insert affiliate user + default affiliate_pages row. Retries on slug/code race. Returns new user id."""
-    email_norm = email.strip().lower()
+    email_norm = normalize_email(email)
     full_name = f"{first_name.strip()} {last_name.strip()}".strip()
     fn = first_name.strip()
     ln = last_name.strip()

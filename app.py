@@ -9,6 +9,7 @@ load_dotenv()
 
 import copy
 import json
+import logging
 import os
 import secrets
 import sqlite3
@@ -41,6 +42,8 @@ import stripe
 
 import db as database
 from tracking import client_ip_from_request, device_class_from_user_agent, geo_lookup, ip_fingerprint
+
+logger = logging.getLogger(__name__)
 
 # Product detail hero + thumbnail stack: show at most this many images (ordered by sort_order).
 PRODUCT_DETAIL_MAX_IMAGES = 5
@@ -92,6 +95,16 @@ def _stripe_publishable_key() -> str:
 
 
 app = Flask(__name__)
+
+_log_level_name = (os.environ.get("LOG_LEVEL") or "INFO").strip().upper()
+_log_level = getattr(logging, _log_level_name, logging.INFO)
+if not logging.root.handlers:
+    logging.basicConfig(
+        level=_log_level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+else:
+    logging.getLogger(__name__).setLevel(_log_level)
 
 # Railway (and similar) sit behind a reverse proxy; fixes request.host_url / scheme for Stripe return URLs.
 if (os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("TRUST_PROXY") or "").strip():
@@ -565,7 +578,7 @@ def _admin_owner_emails() -> frozenset:
     """Emails allowed to use /login + full admin UI even if DB role is still ``affiliate``.
     Set ``ADMIN_EMAILS`` to a comma-separated list to override or extend (default: liquoricelocker@gmail.com)."""
     raw = os.environ.get("ADMIN_EMAILS", "liquoricelocker@gmail.com")
-    return frozenset(e.strip().lower() for e in raw.split(",") if e.strip())
+    return frozenset(database.normalize_email(e) for e in raw.split(",") if e.strip())
 
 
 def _user_is_effective_admin(user: Optional[User] = None) -> bool:
@@ -574,8 +587,8 @@ def _user_is_effective_admin(user: Optional[User] = None) -> bool:
         return False
     if getattr(u, "role", None) == "admin":
         return True
-    email = (getattr(u, "email", None) or "").strip().lower()
-    return email in _admin_owner_emails()
+    email = database.normalize_email(getattr(u, "email", None) or "")
+    return bool(email) and email in _admin_owner_emails()
 
 
 @app.template_global()
@@ -784,17 +797,28 @@ def login():
     if current_user.is_authenticated:
         return redirect(_dashboard_for_role())
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
+        email = database.normalize_email(request.form.get("email", ""))
         password = request.form.get("password", "")
+        if not email:
+            flash("Enter your email address.", "error")
+            return render_template("login.html")
         with database.get_db() as conn:
             row = database.user_by_email(conn, email)
-            if row and check_password_hash(row["password_hash"], password):
-                if row["role"] != "admin" and email not in _admin_owner_emails():
-                    flash("Use Listening Room sign in in the site footer to access your member account.", "error")
-                    return render_template("login.html")
-                login_user(User(row), remember=True)
-                return redirect(_dashboard_for_role(User(row)))
-        flash("Invalid email or password.", "error")
+            if not row:
+                logger.info("staff_login outcome=user_not_found")
+                flash("User not found.", "error")
+                return render_template("login.html")
+            if not check_password_hash(row["password_hash"], password):
+                logger.info("staff_login outcome=wrong_password user_id=%s", int(row["id"]))
+                flash("Incorrect password.", "error")
+                return render_template("login.html")
+            if row["role"] != "admin" and email not in _admin_owner_emails():
+                logger.info("staff_login outcome=affiliate_must_use_listening_room user_id=%s", int(row["id"]))
+                flash("Use Listening Room sign in in the site footer to access your member account.", "error")
+                return render_template("login.html")
+            logger.info("staff_login outcome=ok user_id=%s", int(row["id"]))
+            login_user(User(row), remember=True)
+            return redirect(_dashboard_for_role(User(row)))
     return render_template("login.html")
 
 
@@ -807,13 +831,13 @@ def auth_affiliate_signup():
         data = request.get_json(silent=True) or {}
         first_name = (data.get("first_name") or "").strip()
         last_name = (data.get("last_name") or "").strip()
-        email = (data.get("email") or "").strip().lower()
+        email = database.normalize_email(data.get("email") or "")
         password = data.get("password") or ""
         password_confirm = data.get("password_confirm") or ""
     else:
         first_name = (request.form.get("first_name") or "").strip()
         last_name = (request.form.get("last_name") or "").strip()
-        email = (request.form.get("email") or "").strip().lower()
+        email = database.normalize_email(request.form.get("email") or "")
         password = request.form.get("password") or ""
         password_confirm = request.form.get("password_confirm") or ""
 
@@ -840,13 +864,17 @@ def auth_affiliate_signup():
                 return _fail_json(409, "email_exists") if wants_json else _fail_form("An account with this email already exists.")
             uid = database.create_affiliate_signup(conn, email, pw_hash, first_name, last_name)
     except sqlite3.IntegrityError:
+        logger.info("affiliate_signup outcome=email_integrity_conflict")
         return _fail_json(409, "email_exists") if wants_json else _fail_form("An account with this email already exists.")
     except RuntimeError:
+        logger.warning("affiliate_signup outcome=server_busy")
         return _fail_json(503, "server_busy") if wants_json else _fail_form("Could not complete signup. Please try again.")
 
+    logger.info("affiliate_signup outcome=ok user_id=%s", uid)
     with database.get_db() as conn:
         row = database.user_by_id(conn, uid)
     if not row:
+        logger.error("affiliate_signup missing row after insert user_id=%s", uid)
         return _fail_json(500, "invalid") if wants_json else _fail_form("Something went wrong. Try again.")
     login_user(User(row), remember=True)
     if wants_json:
@@ -858,16 +886,22 @@ def auth_affiliate_signup():
 def auth_affiliate_step1():
     """Verify member email + password; return TOTP setup (QR) or verification step."""
     data = request.get_json(silent=True) or {}
-    email = (data.get("email") or "").strip().lower()
+    email = database.normalize_email(data.get("email") or "")
     password = data.get("password") or ""
     if not email or not password:
+        logger.info("affiliate_step1 outcome=missing_fields")
         return jsonify({"ok": False, "error": "invalid_credentials"}), 400
     with database.get_db() as conn:
         row = database.user_by_email(conn, email)
-    if not row or row["role"] != "affiliate":
-        return jsonify({"ok": False, "error": "invalid_credentials"}), 401
+    if not row:
+        logger.info("affiliate_step1 outcome=user_not_found")
+        return jsonify({"ok": False, "error": "user_not_found"}), 401
+    if row["role"] != "affiliate":
+        logger.info("affiliate_step1 outcome=wrong_account_type user_id=%s role=%s", int(row["id"]), row["role"])
+        return jsonify({"ok": False, "error": "wrong_account_type"}), 403
     if not check_password_hash(row["password_hash"], password):
-        return jsonify({"ok": False, "error": "invalid_credentials"}), 401
+        logger.info("affiliate_step1 outcome=wrong_password user_id=%s", int(row["id"]))
+        return jsonify({"ok": False, "error": "wrong_password"}), 401
     uid = int(row["id"])
     exp = time.time() + AFFILIATE_2FA_TTL_SEC
     totp_secret = row["totp_secret"]
@@ -879,8 +913,10 @@ def auth_affiliate_step1():
                 database.set_user_totp_secret(conn, uid, totp_secret)
             qr = _totp_provisioning_qr_data_url(totp_secret, email)
             session[AFFILIATE_2FA_PENDING_KEY] = {"uid": uid, "exp": exp, "mode": "setup"}
+            logger.info("affiliate_step1 outcome=totp_setup user_id=%s", uid)
             return jsonify({"ok": True, "step": "setup", "qr": qr})
         session[AFFILIATE_2FA_PENDING_KEY] = {"uid": uid, "exp": exp, "mode": "verify"}
+        logger.info("affiliate_step1 outcome=totp_verify user_id=%s", uid)
         return jsonify({"ok": True, "step": "verify"})
 
 
@@ -922,7 +958,7 @@ def auth_affiliate_step2():
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
+        email = database.normalize_email(request.form.get("email", ""))
         with database.get_db() as conn:
             row = database.user_by_email(conn, email)
             if row and row["role"] == "affiliate":

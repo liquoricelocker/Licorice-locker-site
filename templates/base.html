@@ -391,7 +391,18 @@
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (x) {
             if (!x.ok || !x.j.ok) {
-              setError(x.j && x.j.error === "invalid_credentials" ? "Invalid email or password." : "Something went wrong. Try again.");
+              var err = x.j && x.j.error;
+              var msg =
+                err === "user_not_found"
+                  ? "No account exists for that email."
+                  : err === "wrong_password"
+                  ? "Incorrect password."
+                  : err === "wrong_account_type"
+                  ? "Use administrator sign-in for staff accounts."
+                  : err === "invalid_credentials"
+                  ? "Enter your email and password."
+                  : "Something went wrong. Try again.";
+              setError(msg);
               return;
             }
             if (x.j.step === "setup" && x.j.qr && qrImg) {
