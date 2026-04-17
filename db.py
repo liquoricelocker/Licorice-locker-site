@@ -27,10 +27,13 @@ DB_PATH = _resolved_db_path()
 
 
 def normalize_email(email: Optional[str]) -> str:
-    """Return a single canonical form for lookups and storage: strip, NFKC, case-fold.
+    """Return a single canonical form for lookups and storage.
 
-    SQLite ``TEXT`` equality is case-sensitive; without normalization, sign-in can fail
-    when the stored address differs only by case or stray whitespace from the typed value.
+    - Strip, NFKC, case-fold (SQLite ``TEXT`` equality is case-sensitive).
+    - ``@googlemail.com`` → ``@gmail.com`` (Google treats them as the same mailbox).
+    - For Gmail addresses: strip ``+tag`` from the local part (delivery aliases) and remove
+      dots from the local part (Google ignores dots). Matches how people type vs how they
+      signed up.
     """
     if email is None:
         return ""
@@ -38,7 +41,19 @@ def normalize_email(email: Optional[str]) -> str:
     if not s:
         return ""
     s = unicodedata.normalize("NFKC", s)
-    return s.casefold()
+    s = s.casefold()
+    if "@" not in s:
+        return s
+    local, domain = s.rsplit("@", 1)
+    local = local.strip()
+    domain = domain.strip()
+    if domain == "googlemail.com":
+        domain = "gmail.com"
+    if domain == "gmail.com":
+        if "+" in local:
+            local = local.split("+", 1)[0]
+        local = local.replace(".", "")
+    return f"{local}@{domain}"
 
 
 def _migrate_normalize_user_emails(db: sqlite3.Connection) -> None:
@@ -1073,11 +1088,19 @@ def user_by_email(db: sqlite3.Connection, email: str) -> Optional[sqlite3.Row]:
     row = db.execute("SELECT * FROM users WHERE email = ?", (norm,)).fetchone()
     if row:
         return row
-    # Legacy rows created before normalization (mixed-case storage)
-    return db.execute(
+    # Legacy: mixed-case / whitespace-only differences
+    row = db.execute(
         "SELECT * FROM users WHERE lower(trim(email)) = ?",
         (norm.lower(),),
     ).fetchone()
+    if row:
+        return row
+    # Legacy: rows stored before Gmail/googlemail or dot/plus canonicalization — compare
+    # canonical forms without loading unbounded columns (users table stays small).
+    for r in db.execute("SELECT * FROM users").fetchall():
+        if normalize_email(r["email"] or "") == norm:
+            return r
+    return None
 
 
 def allocate_unique_affiliate_code_and_slug(

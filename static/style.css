@@ -1357,7 +1357,7 @@ body.slide-menu-open .slide-menu-panel {
   border-bottom: 1px solid var(--hairline);
 }
 
-/* Connect (left) · Information (centre) */
+/* Connect (left) · Information (right) */
 .site-footer-grid--two {
   grid-template-columns: 1fr 1fr;
 }
@@ -1368,17 +1368,18 @@ body.slide-menu-open .slide-menu-panel {
 }
 
 .site-footer-col--information {
-  justify-self: center;
-  text-align: center;
+  justify-self: end;
+  text-align: right;
 }
 
 .site-footer-col--information .site-footer-nav-col {
-  align-items: center;
+  align-items: flex-end;
 }
 
 .site-footer-col--information .site-footer-currency-note {
   margin-left: auto;
-  margin-right: auto;
+  margin-right: 0;
+  max-width: 28rem;
 }
 
 .site-footer-heading {
@@ -1581,11 +1582,16 @@ body.slide-menu-open .slide-menu-panel {
 
   .site-footer-col--information {
     justify-self: stretch;
-    text-align: center;
+    text-align: right;
   }
 
   .site-footer-col--information .site-footer-nav-col {
-    align-items: center;
+    align-items: flex-end;
+  }
+
+  .site-footer-col--information .site-footer-currency-note {
+    margin-left: auto;
+    margin-right: 0;
   }
 
   .site-footer-brand-row {
