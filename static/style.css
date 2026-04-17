@@ -3124,6 +3124,17 @@ body.affiliate-modal-open {
   line-height: 1.5;
 }
 
+.affiliate-modal-hint--below-error {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.affiliate-modal-hint--below-error a {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .affiliate-modal-qr-wrap {
   display: flex;
   justify-content: center;

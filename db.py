@@ -38,6 +38,16 @@ def normalize_email(email: Optional[str]) -> str:
     if email is None:
         return ""
     s = str(email).strip()
+    # Autofill / paste sometimes inserts BOM or zero-width characters (Safari, Word, PDFs).
+    s = (
+        s.replace("\ufeff", "")
+        .replace("\u200b", "")
+        .replace("\u200c", "")
+        .replace("\u200d", "")
+        .replace("\u2060", "")
+    )
+    # Fullwidth @ (some IMEs / mobile keyboards)
+    s = s.replace("\uff20", "@")
     if not s:
         return ""
     s = unicodedata.normalize("NFKC", s)

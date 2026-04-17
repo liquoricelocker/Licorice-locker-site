@@ -21,6 +21,7 @@ from pathlib import Path
 from calendar import month_name, monthrange
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import click
 from flask import (
     Flask,
     flash,
@@ -885,7 +886,8 @@ def auth_affiliate_step1():
     with database.get_db() as conn:
         row = database.user_by_email(conn, email)
     if not row:
-        logger.info("affiliate_step1 outcome=user_not_found")
+        dom = email.rsplit("@", 1)[-1] if "@" in email else ""
+        logger.info("affiliate_step1 outcome=user_not_found domain=%s", dom)
         return jsonify({"ok": False, "error": "user_not_found"}), 401
     if row["role"] != "affiliate":
         logger.info("affiliate_step1 outcome=wrong_account_type user_id=%s role=%s", int(row["id"]), row["role"])
@@ -3183,6 +3185,59 @@ def init_db_command():
     database.init_db()
     database.seed_if_empty()
     print("Database ready.")
+
+
+@app.cli.command("create-listening-room-user")
+@click.argument("email")
+@click.argument("password")
+@click.option("--first-name", default="Member", show_default=True)
+@click.option("--last-name", default="User", show_default=True)
+@click.option(
+    "--reset-password",
+    is_flag=True,
+    help="If an affiliate already exists for this email, set password and reset 2FA (use only on the server).",
+)
+def create_listening_room_user(
+    email: str, password: str, first_name: str, last_name: str, reset_password: bool
+) -> None:
+    """Create a Listening Room (affiliate) login, or reset password for an existing affiliate.
+
+    Run on the host that owns DATABASE_PATH (e.g. Railway shell with volume attached):
+
+        flask --app app create-listening-room-user you@example.com 'your-password'
+
+    If the SQLite file was recreated on deploy, recreate the account here or attach a persistent volume.
+    """
+    database.init_db()
+    norm = database.normalize_email(email)
+    if len(password) < 8:
+        raise click.ClickException("Password must be at least 8 characters.")
+    if not norm or "@" not in norm:
+        raise click.ClickException("Invalid email address.")
+    _method = "pbkdf2:sha256"
+    pw_hash = generate_password_hash(password, method=_method)
+    with database.get_db() as conn:
+        row = database.user_by_email(conn, norm)
+        if row:
+            if row["role"] != "affiliate":
+                raise click.ClickException(
+                    f"A user already exists with role {row['role']!r}. Use a different email or staff admin tools."
+                )
+            if not reset_password:
+                raise click.ClickException(
+                    "An affiliate account already exists for this email. "
+                    "Pass --reset-password to set a new password and clear 2FA."
+                )
+            uid = int(row["id"])
+            database.set_user_password_hash(conn, uid, pw_hash)
+            database.clear_user_totp(conn, uid)
+            click.echo(
+                f"Updated password and cleared 2FA for affiliate id={uid} ({norm}). "
+                "They will scan a new authenticator QR on next sign-in."
+            )
+            return
+        uid = database.create_affiliate_signup(conn, norm, pw_hash, first_name, last_name)
+    click.echo(f"Created Listening Room affiliate id={uid} email={norm}")
 
 
 app.logger.info(
