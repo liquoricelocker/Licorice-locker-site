@@ -23,7 +23,6 @@
   <div class="header-wrap">
     <header class="site-header">
       <div class="header-left">
-        {% if not user_is_effective_admin() %}
         <div class="currency-switcher" id="currency-switcher">
           <button
             type="button"
@@ -50,42 +49,23 @@
             <a class="currency-switcher-more" href="{{ url_for('currency_pricing') }}">Currency &amp; pricing info</a>
           </div>
         </div>
-        {% endif %}
         <a
           href="{{ url_for('cart_view') }}"
           class="header-cart"
           {% if cart_has_items %}aria-label="Shopping cart, {{ cart_item_count }} items"{% else %}aria-label="Shopping cart"{% endif %}
         >
           <span class="header-cart-inner">
-            {% if cart_has_items %}
-            <span class="header-cart-heart" aria-hidden="true">❤</span>
-            {% endif %}
             <svg class="header-cart-bag" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor" aria-hidden="true">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
             </svg>
           </span>
         </a>
-        <nav class="nav nav-left" aria-label="Primary">
-          <a href="{{ url_for('shop') }}">Shop</a>
-          <a href="{{ url_for('listening_room_program') }}">The Listening Room</a>
-        </nav>
       </div>
       <a class="logo-home" href="{{ header_home_url }}" title="Home">
         <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker — Home" width="200" height="48">
       </a>
       <div class="header-right">
-        <nav class="nav nav-account" aria-label="Account">
-          {% if current_user.is_authenticated %}
-            {% if user_is_effective_admin() %}
-              <a href="{{ url_for('admin_dashboard') }}">Admin</a>
-            {% else %}
-              <a href="{{ url_for('affiliate_dashboard') }}">Your Listening Room</a>
-              <a href="{{ url_for('affiliate_page_edit') }}">Listening Room page</a>
-            {% endif %}
-            <a href="{{ url_for('logout') }}">Log out</a>
-          {% endif %}
-        </nav>
-        <button type="button" class="burger-btn" id="burger-menu-btn" aria-expanded="false" aria-controls="slide-menu" aria-label="Open products menu">
+        <button type="button" class="burger-btn" id="burger-menu-btn" aria-expanded="false" aria-controls="slide-menu" aria-label="Open menu">
           <span class="burger-lines" aria-hidden="true">
             <span></span><span></span><span></span>
           </span>
@@ -96,21 +76,28 @@
   <div class="slide-menu-backdrop" id="slide-menu-backdrop" aria-hidden="true" tabindex="-1"></div>
   <aside id="slide-menu" class="slide-menu-panel" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="slide-menu-title">
     <div class="slide-menu-inner">
-      <p id="slide-menu-title" class="sr-only">Products</p>
-      <nav class="slide-menu-nav" aria-label="Products">
-        <a class="slide-menu-item slide-menu-item--program" href="{{ url_for('listening_room_program') }}">
-          <span class="slide-menu-item-img slide-menu-item-img--lr" aria-hidden="true">LR</span>
-          <span class="slide-menu-item-label">The Listening Room</span>
-        </a>
-        {% for item in nav_menu_items %}
-        <a class="slide-menu-item" href="{{ url_for('product_detail', slug=item.slug) }}">
-          <span class="slide-menu-item-img">
-            <img src="{{ url_for('static', filename=item.menu_image) }}" alt="" width="800" height="450" loading="lazy" decoding="async">
-          </span>
-          <span class="slide-menu-item-label">{{ item.name }}</span>
-        </a>
-        {% endfor %}
+      <p id="slide-menu-title" class="sr-only">Site navigation</p>
+      <nav class="slide-menu-nav slide-menu-nav--collection" aria-label="Collection">
+        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='sound-wave') }}">Sound Wave</a>
+        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='riff') }}">Riff</a>
+        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='harmony') }}">Harmony</a>
+        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='melody') }}">Melody</a>
+        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='allegro') }}">Allegra</a>
+        <a class="slide-menu-link" href="{{ url_for('listening_room_program') }}">Listening Room</a>
       </nav>
+      <div class="slide-menu-auth" aria-label="Listening Room account">
+        {% if current_user.is_authenticated %}
+          {% if user_is_effective_admin() %}
+            <a class="slide-menu-link" href="{{ url_for('admin_dashboard') }}">Admin</a>
+            <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
+          {% else %}
+            <a class="slide-menu-link" href="{{ url_for('affiliate_dashboard') }}">Your Listening Room</a>
+            <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
+          {% endif %}
+        {% else %}
+          <button type="button" class="slide-menu-link slide-menu-link--button" id="slide-menu-join-lr-btn">Join the Listening Room</button>
+        {% endif %}
+      </div>
     </div>
   </aside>
   <script>
@@ -126,21 +113,35 @@
       btn.setAttribute("aria-expanded", open);
       menu.setAttribute("aria-hidden", !open);
       backdrop.setAttribute("aria-hidden", !open);
-      btn.setAttribute("aria-label", open ? "Close products menu" : "Open products menu");
+      btn.setAttribute("aria-label", open ? "Close menu" : "Open menu");
     }
     function closeMenu() {
       setOpen(false);
     }
+    window.closeSlideMenu = closeMenu;
     btn.addEventListener("click", function () {
       setOpen(!body.classList.contains("slide-menu-open"));
     });
     backdrop.addEventListener("click", closeMenu);
+    menu.querySelectorAll("a.slide-menu-link[href]").forEach(function (a) {
+      a.addEventListener("click", function () {
+        closeMenu();
+      });
+    });
     document.addEventListener("keydown", function (e) {
       if (e.key !== "Escape" || !body.classList.contains("slide-menu-open")) return;
       if (document.body.classList.contains("affiliate-modal-open")) return;
       if (document.body.classList.contains("currency-switcher-open")) return;
       closeMenu();
     });
+    var joinBtn = document.getElementById("slide-menu-join-lr-btn");
+    if (joinBtn) {
+      joinBtn.addEventListener("click", function () {
+        closeMenu();
+        var signupOpen = document.getElementById("affiliate-signup-open-btn");
+        if (signupOpen) signupOpen.click();
+      });
+    }
   })();
   </script>
 
@@ -340,7 +341,7 @@
       if (burger) {
         burger.classList.remove("is-open");
         burger.setAttribute("aria-expanded", "false");
-        burger.setAttribute("aria-label", "Open products menu");
+        burger.setAttribute("aria-label", "Open menu");
       }
       if (slideBackdrop) slideBackdrop.setAttribute("aria-hidden", "true");
       if (slideMenu) slideMenu.setAttribute("aria-hidden", "true");
@@ -482,7 +483,7 @@
       if (burger) {
         burger.classList.remove("is-open");
         burger.setAttribute("aria-expanded", "false");
-        burger.setAttribute("aria-label", "Open products menu");
+        burger.setAttribute("aria-label", "Open menu");
       }
       if (slideBackdrop) slideBackdrop.setAttribute("aria-hidden", "true");
       if (slideMenu) slideMenu.setAttribute("aria-hidden", "true");

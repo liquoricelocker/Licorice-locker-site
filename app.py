@@ -527,15 +527,6 @@ def _cart_get_list(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
 
 
 @app.context_processor
-def inject_nav_menu() -> Dict[str, Any]:
-    return {
-        "nav_menu_items": [
-            {"slug": slug, "name": name, "menu_image": fn} for slug, name, fn in NAV_MENU_ITEMS
-        ]
-    }
-
-
-@app.context_processor
 def inject_product_checkout_banner() -> Dict[str, Any]:
     """Hero/banner static image per product slug (checkout line thumbnails)."""
     banners = {s: fn for s, _n, fn in NAV_MENU_ITEMS}
