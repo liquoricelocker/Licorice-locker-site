@@ -173,9 +173,18 @@
         <div class="site-footer-logo">
           <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker" width="180" height="44" decoding="async">
         </div>
+        {% if not current_user.is_authenticated %}
+        <div class="site-footer-brand-aside">
+          <button type="button" class="btn primary site-footer-signin-btn" id="affiliate-login-open-btn" aria-haspopup="dialog" aria-controls="affiliate-login-modal">Sign in</button>
+          <p class="site-footer-copy">
+            Licorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Licorice Locker 2026.
+          </p>
+        </div>
+        {% else %}
         <p class="site-footer-copy">
           Licorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Licorice Locker 2026.
         </p>
+        {% endif %}
       </div>
     </div>
     {% if current_user.is_authenticated and not user_is_effective_admin() %}
@@ -187,7 +196,6 @@
       <div class="site-footer-bottom-links">
         <a href="{{ url_for('login') }}" class="site-footer-admin-login">Admin login</a>
         <a href="{{ url_for('listening_room_program') }}" class="site-footer-lr-link">Join the Listening Room</a>
-        <button type="button" class="site-footer-admin-login site-footer-lr-signin" id="affiliate-login-open-btn" aria-haspopup="dialog" aria-controls="affiliate-login-modal">Sign in</button>
       </div>
     </div>
     {% endif %}

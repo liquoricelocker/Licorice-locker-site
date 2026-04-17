@@ -1469,6 +1469,21 @@ body.slide-menu-open .slide-menu-panel {
   line-height: 0;
 }
 
+.site-footer-brand-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 1 1 min(100%, 42rem);
+  max-width: min(52ch, 100%);
+  gap: 0.65rem;
+}
+
+.site-footer-signin-btn {
+  font-size: 0.8125rem;
+  padding: 0.85rem 1.85rem;
+  flex-shrink: 0;
+}
+
 .site-footer-brand-row .site-footer-copy {
   margin: 0;
   flex: 1 1 min(100%, 42rem);
@@ -1477,6 +1492,11 @@ body.slide-menu-open .slide-menu-panel {
   font-size: clamp(0.75rem, 1.8vw, 0.8125rem);
   line-height: 1.65;
   color: var(--muted);
+}
+
+.site-footer-brand-aside .site-footer-copy {
+  flex: none;
+  width: 100%;
 }
 
 .site-footer-staff-login {
@@ -1543,16 +1563,6 @@ body.slide-menu-open .slide-menu-panel {
   opacity: 1;
 }
 
-.site-footer-lr-signin {
-  font: inherit;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  cursor: pointer;
-  text-align: left;
-}
-
 .site-footer-logo img {
   display: block;
   height: clamp(32px, 4vw, 44px);
@@ -1604,6 +1614,19 @@ body.slide-menu-open .slide-menu-panel {
   .site-footer-brand-row .site-footer-copy {
     text-align: left;
     max-width: 100%;
+  }
+
+  .site-footer-brand-aside {
+    align-items: flex-start;
+    max-width: 100%;
+  }
+
+  .site-footer-brand-aside .site-footer-copy {
+    text-align: left;
+  }
+
+  .site-footer-signin-btn {
+    align-self: flex-end;
   }
 
   .site-footer-bottom {
