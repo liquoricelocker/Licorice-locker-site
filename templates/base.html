@@ -621,6 +621,9 @@
     </div>
   </div>
   <script src="{{ url_for('static', filename='cart-upsell.js') }}" defer></script>
+  {% if request.endpoint in ('shop', 'listening_room') %}
+  <script src="{{ url_for('static', filename='product-parallax.js') }}" defer></script>
+  {% endif %}
   {% if not user_is_effective_admin() %}
   <script src="{{ url_for('static', filename='currency-display.js') }}" defer></script>
   {% endif %}
