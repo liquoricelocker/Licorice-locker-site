@@ -83,21 +83,18 @@
         <a class="slide-menu-link" href="{{ url_for('product_detail', slug='harmony') }}">Harmony</a>
         <a class="slide-menu-link" href="{{ url_for('product_detail', slug='melody') }}">Melody</a>
         <a class="slide-menu-link" href="{{ url_for('product_detail', slug='allegro') }}">Allegra</a>
-        <a class="slide-menu-link" href="{{ url_for('listening_room_program') }}">Listening Room</a>
       </nav>
+      {% if current_user.is_authenticated %}
       <div class="slide-menu-auth" aria-label="Listening Room account">
-        {% if current_user.is_authenticated %}
-          {% if user_is_effective_admin() %}
-            <a class="slide-menu-link" href="{{ url_for('admin_dashboard') }}">Admin</a>
-            <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
-          {% else %}
-            <a class="slide-menu-link" href="{{ url_for('affiliate_dashboard') }}">Your Listening Room</a>
-            <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
-          {% endif %}
+        {% if user_is_effective_admin() %}
+          <a class="slide-menu-link" href="{{ url_for('admin_dashboard') }}">Admin</a>
+          <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
         {% else %}
-          <button type="button" class="slide-menu-link slide-menu-link--button" id="slide-menu-join-lr-btn">Join the Listening Room</button>
+          <a class="slide-menu-link" href="{{ url_for('affiliate_dashboard') }}">Your Listening Room</a>
+          <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
         {% endif %}
       </div>
+      {% endif %}
     </div>
   </aside>
   <script>
@@ -134,14 +131,6 @@
       if (document.body.classList.contains("currency-switcher-open")) return;
       closeMenu();
     });
-    var joinBtn = document.getElementById("slide-menu-join-lr-btn");
-    if (joinBtn) {
-      joinBtn.addEventListener("click", function () {
-        closeMenu();
-        var signupOpen = document.getElementById("affiliate-signup-open-btn");
-        if (signupOpen) signupOpen.click();
-      });
-    }
   })();
   </script>
 
@@ -159,7 +148,7 @@
 
   <footer class="site-footer">
     <div class="site-footer-shell">
-      <div class="site-footer-grid {% if not current_user.is_authenticated %}site-footer-grid--three{% else %}site-footer-grid--two{% endif %}">
+      <div class="site-footer-grid site-footer-grid--two">
         <div class="site-footer-col site-footer-col--connect">
           <h3 class="site-footer-heading">Connect</h3>
           <nav class="site-footer-nav-col" aria-label="Social and contact">
@@ -179,18 +168,6 @@
           </nav>
           <p class="site-footer-currency-note muted small">Prices in USD or EUR are estimates for browsing. Final payment is processed in NZD.</p>
         </div>
-        {% if not current_user.is_authenticated %}
-        <div class="site-footer-col site-footer-col--listening-room">
-          <h3 class="site-footer-heading">Listening Room</h3>
-          <nav class="site-footer-nav-col" aria-label="Listening Room program">
-            <a href="{{ url_for('listening_room_program') }}" class="site-footer-link">The Listening Room</a>
-          </nav>
-          <div class="site-footer-affiliate-auth">
-            <button type="button" class="site-footer-affiliate-login" id="affiliate-login-open-btn" aria-haspopup="dialog" aria-controls="affiliate-login-modal">Sign in</button>
-            <button type="button" class="site-footer-affiliate-login site-footer-affiliate-signup" id="affiliate-signup-open-btn" aria-haspopup="dialog" aria-controls="affiliate-signup-modal">Join</button>
-          </div>
-        </div>
-        {% endif %}
       </div>
       <div class="site-footer-brand-row">
         <div class="site-footer-logo">
@@ -201,9 +178,17 @@
         </p>
       </div>
     </div>
-    {% if not current_user.is_authenticated %}
+    {% if current_user.is_authenticated and not user_is_effective_admin() %}
     <div class="site-footer-bottom">
-      <a href="{{ url_for('login') }}" class="site-footer-admin-login">Admin login</a>
+      <a href="{{ url_for('affiliate_dashboard') }}" class="site-footer-lr-link site-footer-lr-link--member">Your Listening Room</a>
+    </div>
+    {% elif not current_user.is_authenticated %}
+    <div class="site-footer-bottom">
+      <div class="site-footer-bottom-links">
+        <a href="{{ url_for('login') }}" class="site-footer-admin-login">Admin login</a>
+        <a href="{{ url_for('listening_room_program') }}" class="site-footer-lr-link">Join the Listening Room</a>
+        <button type="button" class="site-footer-admin-login site-footer-lr-signin" id="affiliate-login-open-btn" aria-haspopup="dialog" aria-controls="affiliate-login-modal">Sign in</button>
+      </div>
     </div>
     {% endif %}
   </footer>
@@ -460,7 +445,7 @@
     var backdrop = signupModal && signupModal.querySelector(".affiliate-modal-backdrop");
     var form = document.getElementById("affiliate-form-signup");
     var errEl = document.getElementById("affiliate-signup-error");
-    if (!signupModal || !openBtn) return;
+    if (!signupModal) return;
 
     function setError(msg) {
       if (!errEl) return;
@@ -500,7 +485,7 @@
       setError("");
     }
 
-    openBtn.addEventListener("click", openSignupModal);
+    if (openBtn) openBtn.addEventListener("click", openSignupModal);
     if (closeBtn) closeBtn.addEventListener("click", closeSignupModal);
     if (backdrop) backdrop.addEventListener("click", closeSignupModal);
 

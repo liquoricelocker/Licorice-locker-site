@@ -1357,10 +1357,9 @@ body.slide-menu-open .slide-menu-panel {
   border-bottom: 1px solid var(--hairline);
 }
 
-/* Connect (left) · Information (centre) · Listening Room (right) */
-.site-footer-grid--two,
-.site-footer-grid--three {
-  grid-template-columns: 1fr auto 1fr;
+/* Connect (left) · Information (centre) */
+.site-footer-grid--two {
+  grid-template-columns: 1fr 1fr;
 }
 
 .site-footer-col--connect {
@@ -1380,16 +1379,6 @@ body.slide-menu-open .slide-menu-panel {
 .site-footer-col--information .site-footer-currency-note {
   margin-left: auto;
   margin-right: auto;
-}
-
-.site-footer-col--listening-room {
-  justify-self: end;
-  text-align: right;
-}
-
-.site-footer-col--listening-room .site-footer-nav-col,
-.site-footer-col--listening-room .site-footer-affiliate-auth {
-  align-items: flex-end;
 }
 
 .site-footer-heading {
@@ -1522,6 +1511,47 @@ body.slide-menu-open .slide-menu-panel {
   opacity: 1;
 }
 
+.site-footer-bottom-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.site-footer-lr-link {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  opacity: 0.62;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.site-footer-lr-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+  opacity: 0.92;
+}
+
+.site-footer-lr-link--member {
+  opacity: 0.85;
+}
+
+.site-footer-lr-link--member:hover {
+  opacity: 1;
+}
+
+.site-footer-lr-signin {
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
 .site-footer-logo img {
   display: block;
   height: clamp(32px, 4vw, 44px);
@@ -1537,8 +1567,7 @@ body.slide-menu-open .slide-menu-panel {
     padding-right: max(1rem, env(safe-area-inset-right, 0px));
   }
 
-  .site-footer-grid--two,
-  .site-footer-grid--three {
+  .site-footer-grid--two {
     grid-template-columns: 1fr;
     gap: 2rem;
     border-bottom: none;
@@ -1557,16 +1586,6 @@ body.slide-menu-open .slide-menu-panel {
 
   .site-footer-col--information .site-footer-nav-col {
     align-items: center;
-  }
-
-  .site-footer-col--listening-room {
-    justify-self: stretch;
-    text-align: right;
-  }
-
-  .site-footer-col--listening-room .site-footer-nav-col,
-  .site-footer-col--listening-room .site-footer-affiliate-auth {
-    align-items: flex-end;
   }
 
   .site-footer-brand-row {
