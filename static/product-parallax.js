@@ -22,8 +22,8 @@
   var OUT_PAD = 120;
 
   function maxShiftPx() {
-    /* Shop 18px → 25.2px; Listening Room 26px → 36.4px (+40%); mobile still 50% of base */
-    var base = document.body.classList.contains("page-listening-room") ? 36.4 : 25.2;
+    /* Prior caps 25.2 / 36.4px → ×1.7 (+70%); mobile still 50% of base */
+    var base = document.body.classList.contains("page-listening-room") ? 61.88 : 42.84;
     if (window.matchMedia("(max-width: 768px)").matches) base *= 0.5;
     return base;
   }
