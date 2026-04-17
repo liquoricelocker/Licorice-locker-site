@@ -17,10 +17,21 @@
   </div>
 </section>
 
-<!-- VISUAL — space for scroll / record interaction -->
-<section class="lr-section lr-section--visual" id="lr-visual" aria-label="Visual">
-  <div class="lr-section-inner lr-visual-inner">
-    <div class="lr-visual-stage" aria-hidden="true"></div>
+<!-- Banner — invitation (below hero) -->
+<section class="lr-section lr-section--visual" id="lr-visual" aria-labelledby="lr-invited-heading">
+  <div class="lr-section-inner">
+    <div class="lr-visual-banner">
+      <img
+        class="lr-visual-banner-img"
+        src="{{ url_for('static', filename='listening-room-invited-banner.png') }}"
+        alt=""
+        width="1024"
+        height="703"
+        loading="lazy"
+        decoding="async"
+      >
+      <h2 id="lr-invited-heading" class="lr-visual-invited">You&rsquo;re Invited</h2>
+    </div>
     <p class="lr-prose lr-prose--center muted">Built for creators, designers, and music lovers.</p>
   </div>
 </section>
