@@ -22,7 +22,8 @@
   var OUT_PAD = 120;
 
   function maxShiftPx() {
-    var base = document.body.classList.contains("page-listening-room") ? 26 : 18;
+    /* Shop 18px → 25.2px; Listening Room 26px → 36.4px (+40%); mobile still 50% of base */
+    var base = document.body.classList.contains("page-listening-room") ? 36.4 : 25.2;
     if (window.matchMedia("(max-width: 768px)").matches) base *= 0.5;
     return base;
   }
