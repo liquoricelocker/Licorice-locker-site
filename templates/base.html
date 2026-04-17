@@ -207,11 +207,8 @@
     <div class="affiliate-modal-panel">
       <button type="button" class="affiliate-modal-close" id="affiliate-modal-close" aria-label="Close dialog">&times;</button>
       <h2 id="affiliate-modal-title" class="affiliate-modal-title">Listening Room sign in</h2>
-      <p class="affiliate-modal-lede">Sign in with your email and password, then enter the code from your authenticator app.</p>
+      <p class="affiliate-modal-lede">Enter your email and password. First time here creates your account — then enter the code from your authenticator app.</p>
       <div id="affiliate-login-error" class="affiliate-modal-error" role="alert" hidden></div>
-      <p id="affiliate-login-no-account-hint" class="affiliate-modal-hint affiliate-modal-hint--below-error" hidden>
-        If you have not joined yet, use <a href="{{ url_for('listening_room_program') }}">Join the Listening Room</a> in the footer to create an account on this site.
-      </p>
 
       <div id="affiliate-step-credentials" class="affiliate-modal-step">
         <form id="affiliate-form-credentials" class="affiliate-modal-form" novalidate>
@@ -278,6 +275,7 @@
   </div>
   <script>
   (function () {
+    var listeningRoomInvitesRequired = {{ listening_room_invites_required | tojson }};
     var step1Url = {{ url_for('auth_affiliate_step1') | tojson }};
     var step2Url = {{ url_for('auth_affiliate_step2') | tojson }};
     var modal = document.getElementById("affiliate-login-modal");
@@ -294,7 +292,6 @@
     var totpInput = document.getElementById("affiliate-totp-code");
     var btn2fa = document.getElementById("affiliate-2fa-submit");
     var backCred = document.getElementById("affiliate-back-credentials");
-    var noAccountHint = document.getElementById("affiliate-login-no-account-hint");
     if (!modal || !openBtn) return;
 
     function setError(msg) {
@@ -306,7 +303,6 @@
         errEl.textContent = "";
         errEl.hidden = true;
       }
-      if (noAccountHint) noAccountHint.hidden = true;
     }
 
     function showCredentials() {
@@ -392,17 +388,23 @@
             if (!x.ok || !x.j.ok) {
               var err = x.j && x.j.error;
               var msg =
-                err === "user_not_found"
-                  ? "No account exists for that email."
-                  : err === "wrong_password"
-                  ? "Incorrect password."
+                err === "wrong_password"
+                  ? "Incorrect password"
                   : err === "wrong_account_type"
                   ? "Use administrator sign-in for staff accounts."
                   : err === "invalid_credentials"
                   ? "Enter your email and password."
+                  : err === "password_short"
+                  ? "Password must be at least 8 characters."
+                  : listeningRoomInvitesRequired && err === "invite_required"
+                  ? "Invite required"
+                  : listeningRoomInvitesRequired &&
+                    (err === "invite_invalid" || err === "invite_email_mismatch")
+                  ? "Invalid invite"
+                  : err === "server_error"
+                  ? "Something went wrong. Please try again."
                   : "Something went wrong. Try again.";
               setError(msg);
-              if (err === "user_not_found" && noAccountHint) noAccountHint.hidden = false;
               return;
             }
             if (x.j.step === "setup" && x.j.qr && qrImg) {

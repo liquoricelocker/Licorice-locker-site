@@ -16,7 +16,11 @@ from werkzeug.security import generate_password_hash
 
 
 def _resolved_db_path() -> Path:
-    """Default: ./data/licorice.db. Set DATABASE_PATH for Railway volumes or custom location."""
+    """Resolve SQLite file path.
+
+    Set ``DATABASE_PATH`` on production (e.g. Railway volume: ``/data/app.db``).
+    If unset, uses ``<project>/data/licorice.db`` (created on first connect).
+    """
     raw = (os.environ.get("DATABASE_PATH") or "").strip()
     if raw:
         return Path(raw).expanduser()
@@ -29,7 +33,7 @@ DB_PATH = _resolved_db_path()
 def normalize_email(email: Optional[str]) -> str:
     """Return a single canonical form for lookups and storage.
 
-    - Strip, NFKC, case-fold (SQLite ``TEXT`` equality is case-sensitive).
+    - Strip, NFKC, case-fold (ASCII emails are lowercased for storage and lookup).
     - ``@googlemail.com`` → ``@gmail.com`` (Google treats them as the same mailbox).
     - For Gmail addresses: strip ``+tag`` from the local part (delivery aliases) and remove
       dots from the local part (Google ignores dots). Matches how people type vs how they
@@ -46,6 +50,8 @@ def normalize_email(email: Optional[str]) -> str:
         .replace("\u200d", "")
         .replace("\u2060", "")
     )
+    # Non-breaking / narrow spaces (Safari autofill, copy-paste from web)
+    s = s.replace("\u00a0", " ").replace("\u202f", " ")
     # Fullwidth @ (some IMEs / mobile keyboards)
     s = s.replace("\uff20", "@")
     if not s:
@@ -110,6 +116,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 
 
 def init_db() -> None:
+    """Create tables and run migrations if missing. Never drops data or overwrites existing rows."""
     with get_db() as db:
         db.executescript(
             """
@@ -239,6 +246,7 @@ def init_db() -> None:
         _migrate_analytics_geo_columns(db)
         _migrate_orders_geo_columns(db)
         _migrate_affiliate_deletion_log(db)
+        _migrate_affiliate_invite_tokens(db)
         _migrate_normalize_user_emails(db)
         # Align legacy16-sale target with top milestone (25)
         db.execute(
@@ -276,6 +284,40 @@ def _migrate_terms_accepted(db: sqlite3.Connection) -> None:
         SET terms_accepted = 1
         WHERE terms_accepted_at IS NOT NULL AND TRIM(terms_accepted_at) != ''
         """
+    )
+
+
+def _migrate_affiliate_invite_tokens(db: sqlite3.Connection) -> None:
+    """Optional invite tokens for controlled Listening Room signup (open mode when table empty / env off)."""
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS affiliate_invite_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT NOT NULL UNIQUE,
+            email TEXT,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    db.execute("CREATE INDEX IF NOT EXISTS idx_affiliate_invite_tokens_token ON affiliate_invite_tokens(token)")
+
+
+def affiliate_invite_token_by_token(conn: sqlite3.Connection, token: str) -> Optional[sqlite3.Row]:
+    t = (token or "").strip()
+    if not t:
+        return None
+    return conn.execute(
+        "SELECT * FROM affiliate_invite_tokens WHERE token = ? LIMIT 1",
+        (t,),
+    ).fetchone()
+
+
+def mark_affiliate_invite_token_used(conn: sqlite3.Connection, invite_id: int) -> None:
+    conn.execute(
+        "UPDATE affiliate_invite_tokens SET used_at = datetime('now') WHERE id = ?",
+        (invite_id,),
     )
 
 

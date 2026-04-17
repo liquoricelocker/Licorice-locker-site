@@ -306,8 +306,13 @@ def affiliate_media_src(url: Optional[str]) -> str:
     return url_for("static", filename=fn)
 
 
-# Idempotent schema migrations (safe for gunicorn import).
+# Idempotent schema migrations (safe for gunicorn import). Creates file/tables under DATABASE_PATH; never wipes data.
 database.init_db()
+logger.info(
+    "database_path=%s file_exists=%s",
+    database.DB_PATH,
+    database.DB_PATH.is_file(),
+)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-change-me-licorice-locker")
 # Same-site return from Stripe → keep cart: Lax allows cookie on top-level return; Secure on HTTPS hosts.
 _use_secure_cookie = (os.environ.get("SESSION_COOKIE_SECURE") or "").strip().lower() in (
@@ -387,6 +392,11 @@ def _session_cart_total_qty() -> int:
 def inject_cart() -> Dict[str, Any]:
     cart_qty = _session_cart_total_qty()
     return {"cart_item_count": cart_qty, "cart_has_items": cart_qty > 0}
+
+
+@app.context_processor
+def inject_listening_room_invites() -> Dict[str, Any]:
+    return {"listening_room_invites_required": _listening_room_invites_required()}
 
 
 # Homepage / slide-out menu order (explicit; not DB sort order).
@@ -657,6 +667,100 @@ def _parse_iso_datetime(raw: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _listening_room_invites_required() -> bool:
+    """Open by default; only enforce invite tokens when explicitly enabled."""
+    invites_required = os.getenv("LISTENING_ROOM_INVITES_REQUIRED", "false").strip().lower()
+    return invites_required in ("1", "true", "yes")
+
+
+def _invite_expired(expires_at_raw: Optional[str]) -> bool:
+    exp = _parse_iso_datetime(expires_at_raw)
+    if not exp:
+        return True
+    return datetime.now(timezone.utc) > exp
+
+
+def _invite_row_matches_email(invite_row: sqlite3.Row, normalized_email: str) -> bool:
+    if "email" not in invite_row.keys():
+        return True
+    em = invite_row["email"]
+    if em is None or str(em).strip() == "":
+        return True
+    return database.normalize_email(str(em)) == normalized_email
+
+
+def _validate_invite_token_row(
+    invite_row: Optional[sqlite3.Row], normalized_email: str
+) -> Tuple[bool, str]:
+    if not invite_row:
+        return False, "invite_invalid"
+    if invite_row["used_at"]:
+        return False, "invite_invalid"
+    if _invite_expired(invite_row["expires_at"]):
+        return False, "invite_invalid"
+    if not _invite_row_matches_email(invite_row, normalized_email):
+        return False, "invite_email_mismatch"
+    return True, ""
+
+
+def _validate_invite_for_join(invite_row: Optional[sqlite3.Row]) -> bool:
+    """Token present, unused, and not expired (email bound checked at signup/login)."""
+    if not invite_row or invite_row["used_at"]:
+        return False
+    if _invite_expired(invite_row["expires_at"]):
+        return False
+    return True
+
+
+def _session_invite_row(conn: sqlite3.Connection) -> Optional[sqlite3.Row]:
+    tok = (session.get("affiliate_invite_token") or "").strip()
+    if not tok:
+        return None
+    return database.affiliate_invite_token_by_token(conn, tok)
+
+
+def _mark_session_invite_used(conn: sqlite3.Connection) -> None:
+    inv = _session_invite_row(conn)
+    if inv and not inv["used_at"]:
+        database.mark_affiliate_invite_token_used(conn, int(inv["id"]))
+
+
+def _refetch_affiliate_user_after_race(conn: sqlite3.Connection, email: str) -> Optional[sqlite3.Row]:
+    """After IntegrityError, another request may have committed the row; brief retry."""
+    for _ in range(25):
+        row = database.user_by_email(conn, email)
+        if row is not None:
+            return row
+        time.sleep(0.02)
+    return None
+
+
+def _affiliate_step1_json_after_password_ok(conn: sqlite3.Connection, row: sqlite3.Row, email: str):
+    uid = int(row["id"])
+    exp = time.time() + AFFILIATE_2FA_TTL_SEC
+    totp_secret = row["totp_secret"]
+    totp_confirmed = bool(row["totp_confirmed"])
+    if not totp_confirmed:
+        if not totp_secret:
+            totp_secret = pyotp.random_base32()
+            database.set_user_totp_secret(conn, uid, totp_secret)
+        qr = _totp_provisioning_qr_data_url(totp_secret, email)
+        session[AFFILIATE_2FA_PENDING_KEY] = {"uid": uid, "exp": exp, "mode": "setup"}
+        logger.info(
+            "affiliate_step1 login_success step=totp_setup user_id=%s normalized_email=%s",
+            uid,
+            email,
+        )
+        return jsonify({"ok": True, "step": "setup", "qr": qr})
+    session[AFFILIATE_2FA_PENDING_KEY] = {"uid": uid, "exp": exp, "mode": "verify"}
+    logger.info(
+        "affiliate_step1 login_success step=totp_verify user_id=%s normalized_email=%s",
+        uid,
+        email,
+    )
+    return jsonify({"ok": True, "step": "verify"})
+
+
 def affiliate_orders_in_month(
     conn: sqlite3.Connection, affiliate_id: int, year: int, month: int
 ) -> List[sqlite3.Row]:
@@ -797,7 +901,7 @@ def login():
         with database.get_db() as conn:
             row = database.user_by_email(conn, email)
             if not row:
-                logger.info("staff_login outcome=user_not_found")
+                logger.info("staff_login outcome=no_staff_user_for_email")
                 flash("User not found.", "error")
                 return render_template("login.html")
             if not check_password_hash(row["password_hash"], password):
@@ -820,7 +924,7 @@ def auth_affiliate_signup():
     ct = (request.content_type or "").lower()
     wants_json = "application/json" in ct
     if wants_json:
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(force=True, silent=True) or {}
         first_name = (data.get("first_name") or "").strip()
         last_name = (data.get("last_name") or "").strip()
         email = database.normalize_email(data.get("email") or "")
@@ -854,7 +958,26 @@ def auth_affiliate_signup():
         with database.get_db() as conn:
             if database.user_by_email(conn, email):
                 return _fail_json(409, "email_exists") if wants_json else _fail_form("An account with this email already exists.")
+            if _listening_room_invites_required():
+                if not (session.get("affiliate_invite_token") or "").strip():
+                    logger.info("affiliate_signup blocked invite_required normalized_email=%s", email)
+                    return (
+                        _fail_json(403, "invite_required")
+                        if wants_json
+                        else _fail_form("An invite link is required. Open your invite URL first, then sign up.")
+                    )
+                inv = _session_invite_row(conn)
+                ok, err = _validate_invite_token_row(inv, email)
+                if not ok:
+                    logger.info("affiliate_signup blocked reason=%s normalized_email=%s", err, email)
+                    return (
+                        _fail_json(403, err)
+                        if wants_json
+                        else _fail_form("Invite is invalid, expired, or does not match this email.")
+                    )
             uid = database.create_affiliate_signup(conn, email, pw_hash, first_name, last_name)
+            if _listening_room_invites_required():
+                _mark_session_invite_used(conn)
     except sqlite3.IntegrityError:
         logger.info("affiliate_signup outcome=email_integrity_conflict")
         return _fail_json(409, "email_exists") if wants_json else _fail_form("An account with this email already exists.")
@@ -876,41 +999,111 @@ def auth_affiliate_signup():
 
 @app.route("/auth/affiliate/step1", methods=["POST"])
 def auth_affiliate_step1():
-    """Verify member email + password; return TOTP setup (QR) or verification step."""
-    data = request.get_json(silent=True) or {}
+    """Listening Room: existing user → password → 2FA; new user → create → same 2FA flow (no dead ends)."""
+    data = request.get_json(force=True, silent=True) or {}
     email = database.normalize_email(data.get("email") or "")
     password = data.get("password") or ""
     if not email or not password:
-        logger.info("affiliate_step1 outcome=missing_fields")
+        logger.info("affiliate_step1 login_failed missing_fields")
         return jsonify({"ok": False, "error": "invalid_credentials"}), 400
+    if len(password) < 8:
+        logger.info("affiliate_step1 login_failed password_short normalized_email=%s", email)
+        return jsonify({"ok": False, "error": "password_short"}), 400
+
+    logger.info("affiliate_step1 login_attempt normalized_email=%s", email)
+    invites_req = _listening_room_invites_required()
+    logger.info(
+        "affiliate_step1 invites_required=%s normalized_email=%s",
+        "true" if invites_req else "false",
+        email,
+    )
+    if not invites_req:
+        logger.info("affiliate_step1 open_signup_mode normalized_email=%s", email)
+    _method = "pbkdf2:sha256"
+
     with database.get_db() as conn:
-        row = database.user_by_email(conn, email)
-    if not row:
-        dom = email.rsplit("@", 1)[-1] if "@" in email else ""
-        logger.info("affiliate_step1 outcome=user_not_found domain=%s", dom)
-        return jsonify({"ok": False, "error": "user_not_found"}), 401
-    if row["role"] != "affiliate":
-        logger.info("affiliate_step1 outcome=wrong_account_type user_id=%s role=%s", int(row["id"]), row["role"])
-        return jsonify({"ok": False, "error": "wrong_account_type"}), 403
-    if not check_password_hash(row["password_hash"], password):
-        logger.info("affiliate_step1 outcome=wrong_password user_id=%s", int(row["id"]))
-        return jsonify({"ok": False, "error": "wrong_password"}), 401
-    uid = int(row["id"])
-    exp = time.time() + AFFILIATE_2FA_TTL_SEC
-    totp_secret = row["totp_secret"]
-    totp_confirmed = bool(row["totp_confirmed"])
-    with database.get_db() as conn:
-        if not totp_confirmed:
-            if not totp_secret:
-                totp_secret = pyotp.random_base32()
-                database.set_user_totp_secret(conn, uid, totp_secret)
-            qr = _totp_provisioning_qr_data_url(totp_secret, email)
-            session[AFFILIATE_2FA_PENDING_KEY] = {"uid": uid, "exp": exp, "mode": "setup"}
-            logger.info("affiliate_step1 outcome=totp_setup user_id=%s", uid)
-            return jsonify({"ok": True, "step": "setup", "qr": qr})
-        session[AFFILIATE_2FA_PENDING_KEY] = {"uid": uid, "exp": exp, "mode": "verify"}
-        logger.info("affiliate_step1 outcome=totp_verify user_id=%s", uid)
-        return jsonify({"ok": True, "step": "verify"})
+        user = database.user_by_email(conn, email)
+        logger.info(
+            "affiliate_step1 user_found=%s normalized_email=%s",
+            "true" if user is not None else "false",
+            email,
+        )
+
+        if user is not None:
+            if user["role"] != "affiliate":
+                logger.info(
+                    "affiliate_step1 login_failed wrong_account_type user_id=%s normalized_email=%s",
+                    int(user["id"]),
+                    email,
+                )
+                return jsonify({"ok": False, "error": "wrong_account_type"}), 403
+            if not check_password_hash(user["password_hash"], password):
+                logger.info(
+                    "affiliate_step1 login_failed wrong_password user_id=%s normalized_email=%s",
+                    int(user["id"]),
+                    email,
+                )
+                return jsonify({"ok": False, "error": "wrong_password"}), 401
+            return _affiliate_step1_json_after_password_ok(conn, user, email)
+
+        if _listening_room_invites_required():
+            if not (session.get("affiliate_invite_token") or "").strip():
+                logger.info("affiliate_step1 login_failed invite_required normalized_email=%s", email)
+                return jsonify({"ok": False, "error": "invite_required"}), 403
+            inv = _session_invite_row(conn)
+            ok, err = _validate_invite_token_row(inv, email)
+            if not ok:
+                logger.info(
+                    "affiliate_step1 login_failed reason=%s normalized_email=%s",
+                    err,
+                    email,
+                )
+                return jsonify({"ok": False, "error": err}), 403
+
+        pw_hash = generate_password_hash(password, method=_method)
+        try:
+            uid = database.create_affiliate_signup(conn, email, pw_hash, "Member", "User")
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            user = _refetch_affiliate_user_after_race(conn, email)
+            if user is None:
+                logger.error(
+                    "affiliate_step1 race_refetch_exhausted normalized_email=%s",
+                    email,
+                )
+                return jsonify({"ok": False, "error": "server_error"}), 500
+            logger.info(
+                "affiliate_step1 auto_create_race user_id=%s normalized_email=%s",
+                int(user["id"]),
+                email,
+            )
+            if user["role"] != "affiliate":
+                return jsonify({"ok": False, "error": "wrong_account_type"}), 403
+            if not check_password_hash(user["password_hash"], password):
+                logger.info(
+                    "affiliate_step1 login_failed wrong_password_after_race user_id=%s normalized_email=%s",
+                    int(user["id"]),
+                    email,
+                )
+                return jsonify({"ok": False, "error": "wrong_password"}), 401
+            return _affiliate_step1_json_after_password_ok(conn, user, email)
+
+        logger.info("affiliate_step1 auto_created_user user_id=%s normalized_email=%s", uid, email)
+        if _listening_room_invites_required():
+            _mark_session_invite_used(conn)
+        user = database.user_by_id(conn, uid)
+        if not user:
+            user = database.user_by_email(conn, email)
+        if not user:
+            user = _refetch_affiliate_user_after_race(conn, email)
+        if not user:
+            logger.error(
+                "affiliate_step1 post_insert_user_missing user_id=%s normalized_email=%s",
+                uid,
+                email,
+            )
+            return jsonify({"ok": False, "error": "server_error"}), 500
+        return _affiliate_step1_json_after_password_ok(conn, user, email)
 
 
 @app.route("/auth/affiliate/step2", methods=["POST"])
@@ -1093,6 +1286,29 @@ def affiliate_landing(slug: str):
             (aff_id, vid),
         )
     return r
+
+
+@app.route("/join")
+def listening_room_join_invite():
+    """Optional invite: /join?token=… stores token in session when LISTENING_ROOM_INVITES_REQUIRED is used."""
+    if not _listening_room_invites_required():
+        logger.info("listening_room_join skipped invites_not_required open_signup_mode")
+        return redirect(url_for("listening_room_program", open_affiliate_login="1"))
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        flash("Missing invite token.", "error")
+        return redirect(url_for("listening_room_program"))
+    with database.get_db() as conn:
+        row = database.affiliate_invite_token_by_token(conn, token)
+    if not _validate_invite_for_join(row):
+        flash("Invalid, expired, or already used invite link.", "error")
+        return redirect(url_for("listening_room_program"))
+    session["affiliate_invite_token"] = token
+    flash(
+        "Invite verified. Use Listening Room sign in in the footer — use the email this invite was issued for.",
+        "ok",
+    )
+    return redirect(url_for("listening_room_program", open_affiliate_login="1"))
 
 
 @app.route("/listening-room")
@@ -3221,23 +3437,24 @@ def create_listening_room_user(
         if row:
             if row["role"] != "affiliate":
                 raise click.ClickException(
-                    f"A user already exists with role {row['role']!r}. Use a different email or staff admin tools."
+                    f"FAIL: A user already exists with role {row['role']!r}. Use a different email or staff admin tools."
                 )
-            if not reset_password:
-                raise click.ClickException(
-                    "An affiliate account already exists for this email. "
-                    "Pass --reset-password to set a new password and clear 2FA."
+            if reset_password:
+                uid = int(row["id"])
+                database.set_user_password_hash(conn, uid, pw_hash)
+                database.clear_user_totp(conn, uid)
+                click.echo(
+                    f"OK: Updated password and cleared 2FA for affiliate id={uid} normalized_email={norm}. "
+                    "Next sign-in will show a new authenticator QR."
                 )
-            uid = int(row["id"])
-            database.set_user_password_hash(conn, uid, pw_hash)
-            database.clear_user_totp(conn, uid)
+                return
             click.echo(
-                f"Updated password and cleared 2FA for affiliate id={uid} ({norm}). "
-                "They will scan a new authenticator QR on next sign-in."
+                f"OK: Listening Room affiliate already exists (id={int(row['id'])}, normalized_email={norm}). "
+                "No changes. Use --reset-password to set a new password and reset 2FA."
             )
             return
         uid = database.create_affiliate_signup(conn, norm, pw_hash, first_name, last_name)
-    click.echo(f"Created Listening Room affiliate id={uid} email={norm}")
+    click.echo(f"OK: Created Listening Room affiliate user_id={uid} normalized_email={norm}")
 
 
 app.logger.info(
