@@ -23,9 +23,9 @@
 </section>
 
 {% if sound_wave_product %}
-<section class="soundwave-showcase" aria-label="Sound Wave product">
-  <div class="soundwave-showcase-inner">
-    <div class="shop-showcase-card">
+<section class="soundwave-showcase magazine-product-row magazine-product-row--start" aria-label="Sound Wave product">
+  <div class="soundwave-showcase-inner magazine-showcase-inner">
+    <div class="shop-showcase-card magazine-product-block">
       <a class="soundwave-banner-link" href="{{ url_for('product_detail', slug='sound-wave') }}">
         <img
           class="soundwave-banner-img"
@@ -35,7 +35,7 @@
           height="900"
         >
       </a>
-      <div class="soundwave-below">
+      <div class="soundwave-below magazine-product-info">
         <h2 class="soundwave-title">Sound Wave</h2>
         <p class="soundwave-price"><span data-nzd-cents="{{ sound_wave_product.price_cents }}">{{ format_money(sound_wave_product.price_cents) }}</span></p>
         {% if sound_wave_product.add_to_cart_enabled|default(1) %}
@@ -61,9 +61,9 @@
 {% endif %}
 
 {% if riff_product %}
-<section class="riff-showcase" aria-label="Riff product">
-  <div class="riff-showcase-inner">
-    <div class="riff-column shop-showcase-card">
+<section class="riff-showcase magazine-product-row magazine-product-row--end magazine-product-row--stagger" aria-label="Riff product">
+  <div class="riff-showcase-inner magazine-showcase-inner">
+    <div class="riff-column shop-showcase-card magazine-product-block">
       <div class="riff-visual">
         <a class="riff-banner-link" href="{{ url_for('product_detail', slug='riff') }}">
           <img
@@ -75,7 +75,7 @@
           >
         </a>
       </div>
-      <div class="riff-below">
+      <div class="riff-below magazine-product-info">
         <h2 class="riff-title">Riff</h2>
         <p class="riff-price">{{ format_money(riff_product.price_cents) }}</p>
         {% if riff_product.add_to_cart_enabled|default(1) %}
@@ -97,9 +97,9 @@
 {% endif %}
 
 {% if harmony_product %}
-<section class="harmony-showcase" aria-label="Harmony product">
-  <div class="harmony-showcase-inner">
-    <div class="harmony-column shop-showcase-card">
+<section class="harmony-showcase magazine-product-row magazine-product-row--start" aria-label="Harmony product">
+  <div class="harmony-showcase-inner magazine-showcase-inner">
+    <div class="harmony-column shop-showcase-card magazine-product-block">
       <div class="harmony-visual">
         <a class="harmony-banner-link" href="{{ url_for('product_detail', slug='harmony') }}">
           <img
@@ -111,7 +111,7 @@
           >
         </a>
       </div>
-      <div class="harmony-below">
+      <div class="harmony-below magazine-product-info">
         <h2 class="harmony-title">Harmony</h2>
         <p class="harmony-price"><span data-nzd-cents="{{ harmony_product.price_cents }}">{{ format_money(harmony_product.price_cents) }}</span></p>
         {% if harmony_product.add_to_cart_enabled|default(1) %}
@@ -133,9 +133,9 @@
 {% endif %}
 
 {% if melody_product %}
-<section class="melody-showcase" aria-label="Melody product">
-  <div class="melody-showcase-inner">
-    <div class="melody-column shop-showcase-card">
+<section class="melody-showcase magazine-product-row magazine-product-row--end magazine-product-row--stagger" aria-label="Melody product">
+  <div class="melody-showcase-inner magazine-showcase-inner">
+    <div class="melody-column shop-showcase-card magazine-product-block">
       <div class="melody-visual">
         <a class="melody-banner-link" href="{{ url_for('product_detail', slug='melody') }}">
           <img
@@ -147,7 +147,7 @@
           >
         </a>
       </div>
-      <div class="melody-below">
+      <div class="melody-below magazine-product-info">
         <h2 class="melody-title">Melody</h2>
         <p class="melody-price"><span data-nzd-cents="{{ melody_product.price_cents }}">{{ format_money(melody_product.price_cents) }}</span></p>
         {% if melody_product.add_to_cart_enabled|default(1) %}
@@ -169,9 +169,9 @@
 {% endif %}
 
 {% if allegro_product %}
-<section class="allegro-showcase" aria-label="Allegra product">
-  <div class="allegro-showcase-inner">
-    <div class="allegro-column shop-showcase-card">
+<section class="allegro-showcase magazine-product-row magazine-product-row--start" aria-label="Allegra product">
+  <div class="allegro-showcase-inner magazine-showcase-inner">
+    <div class="allegro-column shop-showcase-card magazine-product-block">
       <div class="allegro-visual">
         <a class="allegro-banner-link" href="{{ url_for('product_detail', slug='allegro') }}">
           <img
@@ -183,7 +183,7 @@
           >
         </a>
       </div>
-      <div class="allegro-below">
+      <div class="allegro-below magazine-product-info">
         <h2 class="allegro-title">Allegra</h2>
         <p class="allegro-price"><span data-nzd-cents="{{ allegro_product.price_cents }}">{{ format_money(allegro_product.price_cents) }}</span></p>
         {% if allegro_product.add_to_cart_enabled|default(1) %}
