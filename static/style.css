@@ -371,15 +371,21 @@ body {
 .riff-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   width: fit-content;
   max-width: 100%;
+}
+
+.riff-column.shop-showcase-card {
+  align-items: stretch;
 }
 
 .riff-visual {
   display: flex;
   justify-content: flex-end;
+  align-self: stretch;
   width: 100%;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -401,6 +407,7 @@ body {
 }
 
 .riff-below {
+  align-self: stretch;
   width: 100%;
   max-width: 100%;
   padding: 1.25rem 0 0.25rem;
@@ -639,15 +646,21 @@ body {
 .melody-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: stretch;
   width: fit-content;
   max-width: 100%;
+}
+
+.melody-column.shop-showcase-card {
+  align-items: stretch;
 }
 
 .melody-visual {
   display: flex;
   justify-content: flex-end;
+  align-self: stretch;
   width: 100%;
+  min-width: 0;
   max-width: 100%;
 }
 
@@ -669,6 +682,7 @@ body {
 }
 
 .melody-below {
+  align-self: stretch;
   width: 100%;
   max-width: 100%;
   padding: 1.25rem 0 0.25rem;
