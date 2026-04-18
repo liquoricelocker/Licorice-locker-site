@@ -78,11 +78,26 @@
     <div class="slide-menu-inner">
       <p id="slide-menu-title" class="sr-only">Site navigation</p>
       <nav class="slide-menu-nav slide-menu-nav--collection" aria-label="Collection">
-        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='sound-wave') }}">Sound Wave</a>
-        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='riff') }}">Riff</a>
-        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='harmony') }}">Harmony</a>
-        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='melody') }}">Melody</a>
-        <a class="slide-menu-link" href="{{ url_for('product_detail', slug='allegro') }}">Allegra</a>
+        <a class="slide-menu-link slide-menu-link--product-tile" href="{{ url_for('product_detail', slug='sound-wave') }}">
+          <img class="slide-menu-link-media" src="{{ url_for('static', filename='sound-wave-feature-01.png') }}" alt="" width="1600" height="900" decoding="async">
+          <span class="slide-menu-link-label">Sound Wave</span>
+        </a>
+        <a class="slide-menu-link slide-menu-link--product-tile" href="{{ url_for('product_detail', slug='riff') }}">
+          <img class="slide-menu-link-media" src="{{ url_for('static', filename='riff-feature-01.png') }}" alt="" width="800" height="1200" decoding="async">
+          <span class="slide-menu-link-label">Riff</span>
+        </a>
+        <a class="slide-menu-link slide-menu-link--product-tile" href="{{ url_for('product_detail', slug='harmony') }}">
+          <img class="slide-menu-link-media" src="{{ url_for('static', filename='harmony-feature-01.png') }}" alt="" width="800" height="1200" decoding="async">
+          <span class="slide-menu-link-label">Harmony</span>
+        </a>
+        <a class="slide-menu-link slide-menu-link--product-tile" href="{{ url_for('product_detail', slug='melody') }}">
+          <img class="slide-menu-link-media" src="{{ url_for('static', filename='melody-feature-01.png') }}" alt="" width="800" height="1200" decoding="async">
+          <span class="slide-menu-link-label">Melody</span>
+        </a>
+        <a class="slide-menu-link slide-menu-link--product-tile" href="{{ url_for('product_detail', slug='allegro') }}">
+          <img class="slide-menu-link-media" src="{{ url_for('static', filename='allegra-feature-01.png') }}" alt="" width="800" height="1200" decoding="async">
+          <span class="slide-menu-link-label">Allegra</span>
+        </a>
       </nav>
       {% if current_user.is_authenticated %}
       <div class="slide-menu-auth" aria-label="Listening Room account">
