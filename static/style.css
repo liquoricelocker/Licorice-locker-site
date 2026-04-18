@@ -133,6 +133,67 @@ body {
   opacity: 0.85;
 }
 
+/* Shop + Listening Room: hero products — image width drives title, price, CTA (single column) */
+.shop-showcase-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.shop-showcase-card > [class$="-visual"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+.shop-showcase-card [class$="-banner-link"] {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.shop-showcase-card > .soundwave-below,
+.shop-showcase-card > .riff-below,
+.shop-showcase-card > .harmony-below,
+.shop-showcase-card > .melody-below,
+.shop-showcase-card > .allegro-below {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.75rem;
+  padding: 0;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.shop-showcase-card .soundwave-title,
+.shop-showcase-card .riff-title,
+.shop-showcase-card .harmony-title,
+.shop-showcase-card .melody-title,
+.shop-showcase-card .allegro-title {
+  margin: 0 0 0.25rem;
+}
+
+.shop-showcase-card .soundwave-price,
+.shop-showcase-card .riff-price,
+.shop-showcase-card .harmony-price,
+.shop-showcase-card .melody-price,
+.shop-showcase-card .allegro-price {
+  margin: 0 0 0.75rem;
+}
+
+.shop-showcase-card .soundwave-add-form,
+.shop-showcase-card .riff-add-form,
+.shop-showcase-card .harmony-add-form,
+.shop-showcase-card .melody-add-form,
+.shop-showcase-card .allegro-add-form {
+  margin: 0;
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+}
+
 .soundwave-showcase {
   width: 100vw;
   margin-left: calc(50% - 50vw);
@@ -177,6 +238,10 @@ body {
   text-align: left;
   box-sizing: border-box;
   background: transparent;
+}
+
+.shop-showcase-card > .soundwave-below {
+  padding: 0;
 }
 
 .soundwave-title {
@@ -269,24 +334,21 @@ body {
   margin: 0 auto;
   padding: 0 1.25rem;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: flex-start;
 }
 
-/* Shrink-wrap so image + copy share one right edge (not full-bleed image with text only on the right) */
 .riff-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   width: fit-content;
   max-width: 100%;
-  margin-left: auto;
 }
 
 .riff-visual {
-  display: flex;
-  justify-content: flex-end;
-  width: fit-content;
+  display: block;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -308,10 +370,10 @@ body {
 }
 
 .riff-below {
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   padding: 1.25rem 0 0.25rem;
-  text-align: right;
+  text-align: left;
   box-sizing: border-box;
 }
 
@@ -334,7 +396,7 @@ body {
 .riff-add-form {
   margin: 0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .riff-add-btn {
@@ -414,12 +476,13 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  width: fit-content;
   max-width: 100%;
 }
 
 .harmony-visual {
   display: block;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -441,6 +504,7 @@ body {
 
 .harmony-below {
   width: 100%;
+  max-width: 100%;
   padding: 1.25rem 0 0.25rem;
   text-align: left;
   box-sizing: border-box;
@@ -536,7 +600,7 @@ body {
   margin: 0 auto;
   padding: 0 clamp(1.25rem, 4vw, 2.75rem);
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: flex-start;
   box-sizing: border-box;
 }
@@ -544,16 +608,14 @@ body {
 .melody-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   width: fit-content;
   max-width: 100%;
-  margin-left: auto;
 }
 
 .melody-visual {
-  display: flex;
-  justify-content: flex-end;
-  width: fit-content;
+  display: block;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -575,10 +637,10 @@ body {
 }
 
 .melody-below {
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   padding: 1.25rem 0 0.25rem;
-  text-align: right;
+  text-align: left;
   box-sizing: border-box;
 }
 
@@ -601,7 +663,7 @@ body {
 .melody-add-form {
   margin: 0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .melody-add-btn {
@@ -679,14 +741,13 @@ body {
 .allegro-column {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  align-items: flex-start;
   width: fit-content;
   max-width: 100%;
 }
 
 .allegro-visual {
-  display: flex;
-  justify-content: flex-start;
+  display: block;
   width: 100%;
   max-width: 100%;
 }
@@ -709,6 +770,7 @@ body {
 
 .allegro-below {
   width: 100%;
+  max-width: 100%;
   padding: 1.25rem 0 0.25rem;
   text-align: left;
   box-sizing: border-box;
@@ -789,156 +851,17 @@ body {
   outline-offset: 3px;
 }
 
-/* Riff: on larger viewports, pin the content shell to the right (not only centered) */
-@media (min-width: 521px) {
-  .riff-showcase-inner {
-    display: flex;
-    justify-content: flex-end;
-    align-items: flex-start;
-    width: 100%;
-    max-width: 1100px;
-    box-sizing: border-box;
-    margin-top: 0;
-    margin-bottom: 0;
-    margin-left: auto;
-    margin-right: max(1.25rem, env(safe-area-inset-right));
-  }
-
-  .riff-column {
-    margin-left: auto;
-    margin-right: 0;
-    align-items: flex-end;
-    width: fit-content;
-    max-width: 100%;
-  }
-
-  .melody-showcase-inner {
-    display: flex;
-    justify-content: flex-end;
-    align-items: flex-start;
-    width: 100%;
-    max-width: 1100px;
-    box-sizing: border-box;
-    margin-top: 0;
-    margin-bottom: 0;
-    margin-left: auto;
-    margin-right: max(1.25rem, env(safe-area-inset-right));
-    padding-left: clamp(1.25rem, 3vw, 2rem);
-    padding-right: clamp(1.5rem, 5vw, 3rem);
-  }
-
-  .melody-column {
-    margin-left: auto;
-    margin-right: 0;
-    align-items: flex-end;
-    width: fit-content;
-    max-width: 100%;
-  }
-}
-
 @media (max-width: 520px) {
-  .soundwave-showcase-inner {
-    align-items: center;
-  }
-
-  .soundwave-below {
-    text-align: center;
-  }
-
-  .soundwave-add-form {
-    display: flex;
-    justify-content: center;
-  }
-
-  .riff-showcase-inner {
-    justify-content: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .melody-showcase-inner {
-    justify-content: flex-end;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: clamp(1rem, 4vw, 1.5rem);
-    padding-right: clamp(1rem, 4vw, 1.5rem);
-  }
-
-  .riff-column {
-    align-items: center;
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .riff-visual {
-    justify-content: center;
-    width: 100%;
-  }
-
-  .riff-below {
-    width: 100%;
-    text-align: center;
-  }
-
-  .riff-add-form {
-    justify-content: center;
-  }
-
-  .harmony-showcase-inner {
-    justify-content: center;
-  }
-
-  .harmony-column {
-    align-items: center;
-  }
-
-  .harmony-below {
-    text-align: center;
-  }
-
-  .harmony-add-form {
-    justify-content: center;
-  }
-
-  .melody-column {
-    align-items: flex-end;
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .melody-visual {
-    justify-content: flex-end;
-    width: 100%;
-  }
-
-  .melody-below {
-    width: 100%;
-    text-align: right;
-  }
-
-  .melody-add-form {
-    justify-content: flex-end;
-  }
-
+  .soundwave-showcase-inner,
+  .riff-showcase-inner,
+  .harmony-showcase-inner,
+  .melody-showcase-inner,
   .allegro-showcase-inner {
     justify-content: center;
   }
 
-  .allegro-column {
-    align-items: center;
-    width: 100%;
-  }
-
-  .allegro-visual {
-    justify-content: center;
-  }
-
-  .allegro-below {
-    text-align: center;
-  }
-
-  .allegro-add-form {
-    justify-content: center;
+  .shop-showcase-card {
+    align-items: flex-start;
   }
 }
 
@@ -4155,11 +4078,18 @@ body.affiliate-terms-modal-open {
   padding-right: clamp(1rem, 4vw, 1.5rem);
 }
 
-.page-shop .product-grid {
+.page-shop .product-grid,
+.page-listening-room .product-grid {
   gap: 2.5rem;
 }
 
-.page-shop .product-card {
+.page-shop .product-card,
+.page-listening-room .product-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 100%;
   border: none;
   box-shadow: none;
   background: transparent;
@@ -4171,11 +4101,14 @@ body.affiliate-terms-modal-open {
   border: none;
 }
 
-.page-shop .product-card .inline-form.shop-product-buy {
+.page-shop .product-card .inline-form.shop-product-buy,
+.page-listening-room .product-card .inline-form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  width: 100%;
+  max-width: 100%;
 }
 
 /* ——— The Listening Room (public program / conversion page) ——— */

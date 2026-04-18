@@ -24,30 +24,32 @@
 {% if sound_wave_product %}
 <section class="soundwave-showcase" aria-label="Sound Wave product">
   <div class="soundwave-showcase-inner">
-    <a class="soundwave-banner-link" href="{{ url_for('product_detail', slug='sound-wave') }}">
-      <img
-        class="soundwave-banner-img"
-        src="{{ url_for('static', filename='sound-wave-feature-01.png') }}"
-        alt="Sound Wave — sculptural clear acrylic vinyl display in a wave formation"
-        width="1600"
-        height="900"
-      >
-    </a>
-    <div class="soundwave-below">
-      <h2 class="soundwave-title">Sound Wave</h2>
-      <p class="soundwave-price"><span data-nzd-cents="{{ sound_wave_product.price_cents }}">{{ format_money(sound_wave_product.price_cents) }}</span></p>
-      {% if sound_wave_product.add_to_cart_enabled|default(1) %}
-      <form method="post" action="{{ url_for('cart_add') }}" class="soundwave-add-form js-shop-add-cart">
-        <input type="hidden" name="product_id" value="{{ sound_wave_product.id }}">
-        <input type="hidden" name="quantity" value="1">
-        <button type="submit" class="soundwave-add-btn">
-          <span class="soundwave-add-btn-text">
-            <span class="soundwave-add-line">Add to</span>
-            <span class="soundwave-add-line">cart</span>
-          </span>
-        </button>
-      </form>
-      {% endif %}
+    <div class="shop-showcase-card">
+      <a class="soundwave-banner-link" href="{{ url_for('product_detail', slug='sound-wave') }}">
+        <img
+          class="soundwave-banner-img"
+          src="{{ url_for('static', filename='sound-wave-feature-01.png') }}"
+          alt="Sound Wave — sculptural clear acrylic vinyl display in a wave formation"
+          width="1600"
+          height="900"
+        >
+      </a>
+      <div class="soundwave-below">
+        <h2 class="soundwave-title">Sound Wave</h2>
+        <p class="soundwave-price"><span data-nzd-cents="{{ sound_wave_product.price_cents }}">{{ format_money(sound_wave_product.price_cents) }}</span></p>
+        {% if sound_wave_product.add_to_cart_enabled|default(1) %}
+        <form method="post" action="{{ url_for('cart_add') }}" class="soundwave-add-form js-shop-add-cart">
+          <input type="hidden" name="product_id" value="{{ sound_wave_product.id }}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="soundwave-add-btn">
+            <span class="soundwave-add-btn-text">
+              <span class="soundwave-add-line">Add to</span>
+              <span class="soundwave-add-line">cart</span>
+            </span>
+          </button>
+        </form>
+        {% endif %}
+      </div>
     </div>
   </div>
 </section>
@@ -60,7 +62,7 @@
 {% if riff_product %}
 <section class="riff-showcase" aria-label="Riff product">
   <div class="riff-showcase-inner">
-    <div class="riff-column">
+    <div class="riff-column shop-showcase-card">
       <div class="riff-visual">
         <a class="riff-banner-link" href="{{ url_for('product_detail', slug='riff') }}">
           <img
@@ -96,7 +98,7 @@
 {% if harmony_product %}
 <section class="harmony-showcase" aria-label="Harmony product">
   <div class="harmony-showcase-inner">
-    <div class="harmony-column">
+    <div class="harmony-column shop-showcase-card">
       <div class="harmony-visual">
         <a class="harmony-banner-link" href="{{ url_for('product_detail', slug='harmony') }}">
           <img
@@ -132,7 +134,7 @@
 {% if melody_product %}
 <section class="melody-showcase" aria-label="Melody product">
   <div class="melody-showcase-inner">
-    <div class="melody-column">
+    <div class="melody-column shop-showcase-card">
       <div class="melody-visual">
         <a class="melody-banner-link" href="{{ url_for('product_detail', slug='melody') }}">
           <img
@@ -168,7 +170,7 @@
 {% if allegro_product %}
 <section class="allegro-showcase" aria-label="Allegra product">
   <div class="allegro-showcase-inner">
-    <div class="allegro-column">
+    <div class="allegro-column shop-showcase-card">
       <div class="allegro-visual">
         <a class="allegro-banner-link" href="{{ url_for('product_detail', slug='allegro') }}">
           <img
