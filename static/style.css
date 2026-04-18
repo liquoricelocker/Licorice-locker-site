@@ -143,7 +143,8 @@ body {
   box-sizing: border-box;
 }
 
-.shop-showcase-card > [class$="-visual"] {
+.shop-showcase-card > .harmony-visual,
+.shop-showcase-card > .allegro-visual {
   display: block;
   width: 100%;
   max-width: 100%;
@@ -155,15 +156,23 @@ body {
 }
 
 .shop-showcase-card > .soundwave-below,
-.shop-showcase-card > .riff-below,
 .shop-showcase-card > .harmony-below,
-.shop-showcase-card > .melody-below,
 .shop-showcase-card > .allegro-below {
   width: 100%;
   max-width: 100%;
   margin-top: 0.75rem;
   padding: 0;
   text-align: left;
+  box-sizing: border-box;
+}
+
+.shop-showcase-card > .riff-below,
+.shop-showcase-card > .melody-below {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 0.75rem;
+  padding: 0;
+  text-align: right;
   box-sizing: border-box;
 }
 
@@ -184,14 +193,35 @@ body {
 }
 
 .shop-showcase-card .soundwave-add-form,
-.shop-showcase-card .riff-add-form,
 .shop-showcase-card .harmony-add-form,
-.shop-showcase-card .melody-add-form,
 .shop-showcase-card .allegro-add-form {
   margin: 0;
   display: flex;
   justify-content: flex-start;
   width: 100%;
+}
+
+.shop-showcase-card .riff-add-form,
+.shop-showcase-card .melody-add-form {
+  margin: 0;
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+@media (min-width: 521px) {
+  .riff-showcase-inner,
+  .melody-showcase-inner {
+    margin-left: auto;
+    margin-right: max(1.25rem, env(safe-area-inset-right, 0px));
+    width: 100%;
+    max-width: 1100px;
+    box-sizing: border-box;
+  }
+
+  .melody-showcase-inner {
+    padding-right: max(clamp(1.25rem, 4vw, 2.75rem), env(safe-area-inset-right, 0px));
+  }
 }
 
 .soundwave-showcase {
@@ -334,20 +364,21 @@ body {
   margin: 0 auto;
   padding: 0 1.25rem;
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
   align-items: flex-start;
 }
 
 .riff-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   width: fit-content;
   max-width: 100%;
 }
 
 .riff-visual {
-  display: block;
+  display: flex;
+  justify-content: flex-end;
   width: 100%;
   max-width: 100%;
 }
@@ -373,7 +404,7 @@ body {
   width: 100%;
   max-width: 100%;
   padding: 1.25rem 0 0.25rem;
-  text-align: left;
+  text-align: right;
   box-sizing: border-box;
 }
 
@@ -396,7 +427,7 @@ body {
 .riff-add-form {
   margin: 0;
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 .riff-add-btn {
@@ -600,7 +631,7 @@ body {
   margin: 0 auto;
   padding: 0 clamp(1.25rem, 4vw, 2.75rem);
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
   align-items: flex-start;
   box-sizing: border-box;
 }
@@ -608,13 +639,14 @@ body {
 .melody-column {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: flex-end;
   width: fit-content;
   max-width: 100%;
 }
 
 .melody-visual {
-  display: block;
+  display: flex;
+  justify-content: flex-end;
   width: 100%;
   max-width: 100%;
 }
@@ -640,7 +672,7 @@ body {
   width: 100%;
   max-width: 100%;
   padding: 1.25rem 0 0.25rem;
-  text-align: left;
+  text-align: right;
   box-sizing: border-box;
 }
 
@@ -663,7 +695,7 @@ body {
 .melody-add-form {
   margin: 0;
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
 }
 
 .melody-add-btn {
@@ -853,15 +885,16 @@ body {
 
 @media (max-width: 520px) {
   .soundwave-showcase-inner,
-  .riff-showcase-inner,
   .harmony-showcase-inner,
-  .melody-showcase-inner,
   .allegro-showcase-inner {
     justify-content: center;
   }
 
-  .shop-showcase-card {
-    align-items: flex-start;
+  .riff-showcase-inner,
+  .melody-showcase-inner {
+    justify-content: flex-end;
+    padding-left: clamp(1rem, 4vw, 1.5rem);
+    padding-right: max(clamp(1rem, 4vw, 1.5rem), env(safe-area-inset-right, 0px));
   }
 }
 
