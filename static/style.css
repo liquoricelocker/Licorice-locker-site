@@ -22,6 +22,8 @@
   --hairline: rgba(180, 184, 171, 0.55);
   --hairline-soft: rgba(180, 184, 171, 0.35);
   --track-wide: 0.16em;
+  /* Total block height of .site-header (min-height vs logo + padding + border); used when slide menu is open */
+  --site-header-sticky-height: max(3.75rem, calc(0.85rem * 2 + clamp(36px, 5vw, 48px) + 1px));
 }
 
 * {
@@ -1226,6 +1228,8 @@ body.slide-menu-open .slide-menu-backdrop {
 
 body.slide-menu-open .slide-menu-panel {
   transform: translateX(0);
+  /* Header stacks above the panel (z-index); start drawer below it so links are not clipped */
+  top: var(--site-header-sticky-height);
 }
 
 .slide-menu-inner {
