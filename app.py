@@ -313,6 +313,12 @@ logger.info(
     database.DB_PATH,
     database.DB_PATH.is_file(),
 )
+with database.get_db() as _conn:
+    database.sync_admin_allowlist_users(
+        _conn,
+        admin_password_plain=_env_secret_clean("ADMIN_PASSWORD") or None,
+        log=logger,
+    )
 app.secret_key = os.environ.get("SECRET_KEY", "dev-change-me-licorice-locker")
 # Same-site return from Stripe → keep cart: Lax allows cookie on top-level return; Secure on HTTPS hosts.
 _use_secure_cookie = (os.environ.get("SESSION_COOKIE_SECURE") or "").strip().lower() in (
@@ -576,26 +582,19 @@ def load_user(user_id: str) -> Optional[User]:
     return None
 
 
-def _admin_owner_emails() -> frozenset:
-    """Emails allowed to use /login + full admin UI even if DB role is still ``affiliate``.
-    Set ``ADMIN_EMAILS`` to a comma-separated list to override or extend (default: liquoricelocker@gmail.com)."""
-    raw = os.environ.get("ADMIN_EMAILS", "liquoricelocker@gmail.com")
-    return frozenset(database.normalize_email(e) for e in raw.split(",") if e.strip())
-
-
 def _user_is_effective_admin(user: Optional[User] = None) -> bool:
     u = user if user is not None else current_user
     if not u or not getattr(u, "is_authenticated", False):
         return False
-    if getattr(u, "role", None) == "admin":
-        return True
+    if getattr(u, "role", None) != "admin":
+        return False
     email = database.normalize_email(getattr(u, "email", None) or "")
-    return bool(email) and email in _admin_owner_emails()
+    return bool(email) and email in database.admin_allowlist_normalized()
 
 
 @app.template_global()
 def user_is_effective_admin() -> bool:
-    """Templates: show Admin nav and staff UI for role=admin or owner email allowlist."""
+    """Templates: Admin UI only for allowlisted emails with persisted ``admin`` role."""
     return _user_is_effective_admin()
 
 
@@ -898,21 +897,29 @@ def login():
         if not email:
             flash("Enter your email address.", "error")
             return render_template("login.html")
+        logger.info("admin_login_attempt normalized_email=%s", email)
+        if email not in database.admin_allowlist_normalized():
+            logger.info("admin_login_failed reason=not_allowlisted normalized_email=%s", email)
+            return "Unauthorized", 401
         with database.get_db() as conn:
             row = database.user_by_email(conn, email)
             if not row:
-                logger.info("staff_login outcome=no_staff_user_for_email")
+                logger.info("admin_login_failed reason=no_user normalized_email=%s", email)
                 flash("User not found.", "error")
                 return render_template("login.html")
             if not check_password_hash(row["password_hash"], password):
-                logger.info("staff_login outcome=wrong_password user_id=%s", int(row["id"]))
+                logger.info("admin_login_failed reason=wrong_password user_id=%s", int(row["id"]))
                 flash("Incorrect password.", "error")
                 return render_template("login.html")
-            if row["role"] != "admin" and email not in _admin_owner_emails():
-                logger.info("staff_login outcome=affiliate_must_use_listening_room user_id=%s", int(row["id"]))
-                flash("Use Listening Room sign in in the site footer to access your member account.", "error")
+            if row["role"] != "admin":
+                logger.info(
+                    "admin_login_failed reason=not_admin_role user_id=%s normalized_email=%s",
+                    int(row["id"]),
+                    email,
+                )
+                flash("Staff account is not ready yet. Contact support.", "error")
                 return render_template("login.html")
-            logger.info("staff_login outcome=ok user_id=%s", int(row["id"]))
+            logger.info("admin_login_success user_id=%s normalized_email=%s", int(row["id"]), email)
             login_user(User(row), remember=True)
             return redirect(_dashboard_for_role(User(row)))
     return render_template("login.html")
@@ -946,6 +953,12 @@ def auth_affiliate_signup():
 
     if not first_name or not last_name or not email or not password or not password_confirm:
         return _fail_json(400, "fields_required") if wants_json else _fail_form("Please fill in all fields.")
+    if email in database.admin_allowlist_normalized():
+        return (
+            _fail_json(403, "staff_email_reserved")
+            if wants_json
+            else _fail_form("This email is reserved for staff sign in. Use Staff sign in from the site footer link.")
+        )
     if password != password_confirm:
         return _fail_json(400, "password_mismatch") if wants_json else _fail_form("Passwords do not match.")
     if len(password) < 8:
@@ -978,6 +991,11 @@ def auth_affiliate_signup():
             uid = database.create_affiliate_signup(conn, email, pw_hash, first_name, last_name)
             if _listening_room_invites_required():
                 _mark_session_invite_used(conn)
+    except ValueError:
+        logger.info("affiliate_signup blocked staff_email_reserved normalized_email=%s", email)
+        return _fail_json(403, "staff_email_reserved") if wants_json else _fail_form(
+            "This email is reserved for staff sign in. Use Staff sign in from the site footer link."
+        )
     except sqlite3.IntegrityError:
         logger.info("affiliate_signup outcome=email_integrity_conflict")
         return _fail_json(409, "email_exists") if wants_json else _fail_form("An account with this email already exists.")
@@ -1046,6 +1064,10 @@ def auth_affiliate_step1():
                 return jsonify({"ok": False, "error": "wrong_password"}), 401
             return _affiliate_step1_json_after_password_ok(conn, user, email)
 
+        if email in database.admin_allowlist_normalized():
+            logger.info("affiliate_step1 blocked staff_email_reserved normalized_email=%s", email)
+            return jsonify({"ok": False, "error": "staff_email_reserved"}), 403
+
         if _listening_room_invites_required():
             if not (session.get("affiliate_invite_token") or "").strip():
                 logger.info("affiliate_step1 login_failed invite_required normalized_email=%s", email)
@@ -1063,6 +1085,9 @@ def auth_affiliate_step1():
         pw_hash = generate_password_hash(password, method=_method)
         try:
             uid = database.create_affiliate_signup(conn, email, pw_hash, "Member", "User")
+        except ValueError:
+            logger.info("affiliate_step1 blocked staff_email_reserved normalized_email=%s", email)
+            return jsonify({"ok": False, "error": "staff_email_reserved"}), 403
         except sqlite3.IntegrityError:
             conn.rollback()
             user = _refetch_affiliate_user_after_race(conn, email)
@@ -3400,6 +3425,12 @@ def _affiliate_ref_query_last_click(response):
 def init_db_command():
     database.init_db()
     database.seed_if_empty()
+    with database.get_db() as conn:
+        database.sync_admin_allowlist_users(
+            conn,
+            admin_password_plain=_env_secret_clean("ADMIN_PASSWORD") or None,
+            log=logger,
+        )
     print("Database ready.")
 
 
@@ -3430,6 +3461,10 @@ def create_listening_room_user(
         raise click.ClickException("Password must be at least 8 characters.")
     if not norm or "@" not in norm:
         raise click.ClickException("Invalid email address.")
+    if norm in database.admin_allowlist_normalized():
+        raise click.ClickException(
+            "That email is reserved for staff admins. Set ADMIN_PASSWORD and use Staff sign in, or pick a different email."
+        )
     _method = "pbkdf2:sha256"
     pw_hash = generate_password_hash(password, method=_method)
     with database.get_db() as conn:
@@ -3469,4 +3504,10 @@ app.logger.info(
 
 if __name__ == "__main__":
     database.seed_if_empty()
+    with database.get_db() as conn:
+        database.sync_admin_allowlist_users(
+            conn,
+            admin_password_plain=_env_secret_clean("ADMIN_PASSWORD") or None,
+            log=logger,
+        )
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

@@ -29,6 +29,103 @@ def _resolved_db_path() -> Path:
 
 DB_PATH = _resolved_db_path()
 
+# Only these normalized emails may have role ``admin`` (enforced at bootstrap + login).
+ADMIN_EMAIL_ALLOWLIST: Tuple[str, ...] = (
+    "joshuafrenchdesign@gmail.com",
+    "davidbootnz@gmail.com",
+    "accounts@evcity.kiwi",
+)
+
+
+def admin_allowlist_normalized() -> frozenset[str]:
+    return frozenset(normalize_email(e) for e in ADMIN_EMAIL_ALLOWLIST if str(e).strip())
+
+
+def sync_admin_allowlist_users(
+    conn: sqlite3.Connection,
+    *,
+    admin_password_plain: Optional[str],
+    log: Optional[logging.Logger] = None,
+) -> None:
+    """Create missing allowlisted admins, promote allowlisted users to admin, demote any other admin.
+
+    New rows use ``admin_password_plain`` (hashed); existing users keep their password hash.
+    If the password is unset, missing allowlisted users are skipped (logged).
+    """
+    lg = log or logging.getLogger(__name__)
+    allow = admin_allowlist_normalized()
+    method = "pbkdf2:sha256"
+    pw = (admin_password_plain or "").strip()
+    admin_hash: Optional[str] = generate_password_hash(pw, method=method) if pw else None
+
+    for email in sorted(allow):
+        row = user_by_email(conn, email)
+        if row is None:
+            if not admin_hash:
+                lg.warning(
+                    "admin_bootstrap skip_create reason=ADMIN_PASSWORD_unset normalized_email=%s",
+                    email,
+                )
+                continue
+            local = email.split("@", 1)[0] if "@" in email else email
+            conn.execute(
+                """
+                INSERT INTO users (email, password_hash, role, affiliate_slug, full_name)
+                VALUES (?, ?, 'admin', NULL, ?)
+                """,
+                (email, admin_hash, f"Admin ({local})"),
+            )
+            lg.info("admin_bootstrap created normalized_email=%s", email)
+            continue
+        uid = int(row["id"])
+        if (row["role"] or "") != "admin":
+            conn.execute(
+                """
+                UPDATE users
+                SET role = 'admin', affiliate_slug = NULL, affiliate_code = NULL
+                WHERE id = ?
+                """,
+                (uid,),
+            )
+            lg.info("admin_bootstrap promoted_to_admin user_id=%s normalized_email=%s", uid, email)
+
+    for row in conn.execute("SELECT id, email FROM users WHERE role = 'admin'"):
+        em = normalize_email(row["email"] or "")
+        if em not in allow:
+            _demote_non_allowlisted_admin(conn, int(row["id"]), em, lg)
+
+
+def _demote_non_allowlisted_admin(
+    conn: sqlite3.Connection, user_id: int, normalized_email: str, lg: logging.Logger
+) -> None:
+    """Force role to affiliate and ensure Listening Room row exists (legacy stray admins)."""
+    code, slug = allocate_unique_affiliate_code_and_slug(conn, "Staff", "User")
+    conn.execute(
+        """
+        UPDATE users
+        SET role = 'affiliate',
+            affiliate_slug = ?,
+            affiliate_code = ?,
+            affiliate_active = 1
+        WHERE id = ?
+        """,
+        (slug, code, user_id),
+    )
+    has_page = conn.execute("SELECT 1 FROM affiliate_pages WHERE user_id = ?", (user_id,)).fetchone()
+    if not has_page:
+        conn.execute(
+            """
+            INSERT INTO affiliate_pages (user_id, headline, tagline, description, monthly_sales_target)
+            VALUES (?, 'Welcome', '', '', 25)
+            """,
+            (user_id,),
+        )
+    lg.warning(
+        "admin_bootstrap demoted_non_allowlist_admin user_id=%s normalized_email=%s",
+        user_id,
+        normalized_email,
+    )
+
 
 def normalize_email(email: Optional[str]) -> str:
     """Return a single canonical form for lookups and storage.
@@ -1042,16 +1139,8 @@ def seed_if_empty() -> None:
             return
 
         _method = "pbkdf2:sha256"
-        admin_hash = generate_password_hash(os.environ.get("ADMIN_PASSWORD", "admin123"), method=_method)
         aff_hash = generate_password_hash(os.environ.get("AFFILIATE_PASSWORD", "affiliate123"), method=_method)
 
-        db.execute(
-            """
-            INSERT INTO users (email, password_hash, role, affiliate_slug, full_name)
-            VALUES (?, ?, 'admin', NULL, 'Site Admin')
-            """,
-            ("admin@licoricelocker.local", admin_hash),
-        )
         db.execute(
             """
             INSERT INTO users (email, password_hash, role, affiliate_slug, full_name)
@@ -1193,6 +1282,8 @@ def create_affiliate_signup(
 ) -> int:
     """Insert affiliate user + default affiliate_pages row. Retries on slug/code race. Returns new user id."""
     email_norm = normalize_email(email)
+    if email_norm in admin_allowlist_normalized():
+        raise ValueError("email reserved for staff admin allowlist")
     full_name = f"{first_name.strip()} {last_name.strip()}".strip()
     fn = first_name.strip()
     ln = last_name.strip()
