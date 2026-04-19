@@ -387,16 +387,11 @@
     }
 
     if (formCred) {
-      formCred.setAttribute("data-no-global-loader", "");
       formCred.addEventListener("submit", function (e) {
         e.preventDefault();
         setError("");
         var email = (document.getElementById("affiliate-email") || {}).value || "";
         var password = (document.getElementById("affiliate-password") || {}).value || "";
-        function endLoader() {
-          if (typeof hideLoader === "function") hideLoader();
-        }
-        if (typeof showLoader === "function") showLoader();
         fetch(step1Url, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -434,18 +429,13 @@
           })
           .catch(function () {
             setError("Network error. Check your connection.");
-          })
-          .finally(endLoader);
+          });
       });
     }
 
     function submit2fa() {
       setError("");
       var code = ((totpInput && totpInput.value) || "").replace(/\s/g, "");
-      function endLoader() {
-        if (typeof hideLoader === "function") hideLoader();
-      }
-      if (typeof showLoader === "function") showLoader();
       fetch(step2Url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -467,8 +457,7 @@
         })
         .catch(function () {
           setError("Network error. Check your connection.");
-        })
-        .finally(endLoader);
+        });
     }
 
     if (btn2fa) btn2fa.addEventListener("click", submit2fa);
@@ -560,7 +549,6 @@
         }
         var submitBtn = document.getElementById("affiliate-signup-submit");
         if (submitBtn) submitBtn.disabled = true;
-        if (typeof showLoader === "function") showLoader();
         HTMLFormElement.prototype.submit.call(form);
       });
     }
@@ -649,23 +637,6 @@
       </div>
     </div>
   </div>
-  <div
-    id="global-loader"
-    class="loader"
-    role="status"
-    aria-live="polite"
-    aria-busy="false"
-    aria-label="Loading"
-  >
-    <div class="loader-inner">
-      <div class="loader-vinyl-wobble" aria-hidden="true">
-        <div class="loader-vinyl-spin">
-          <div class="loader-vinyl-face"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <script src="{{ url_for('static', filename='global-loader.js') }}"></script>
   <script src="{{ url_for('static', filename='cart-upsell.js') }}" defer></script>
   {% if request.endpoint in ('shop', 'listening_room') %}
   <script src="{{ url_for('static', filename='product-parallax.js') }}" defer></script>
