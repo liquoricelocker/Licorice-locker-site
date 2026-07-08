@@ -7,7 +7,7 @@
   if (!root) return;
 
   var SW = parseInt(root.getAttribute("data-soundwave-cents") || "42900", 10);
-  var MINI = parseInt(root.getAttribute("data-mini-cents") || "14300", 10);
+  var MINI = parseInt(root.getAttribute("data-mini-cents") || "9999", 10);
   var soundwaveEnabled =
     typeof SOUNDWAVE_ENABLED !== "undefined"
       ? SOUNDWAVE_ENABLED

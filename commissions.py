@@ -72,14 +72,14 @@ COMMISSION_TIERS: List[Dict[str, Any]] = [
     {"tier": 3, "name": "Top Performer", "min_sales": 25, "max_sales": None, "commission_rate": 0.30},
 ]
 
-# List-price examples for UI (NZD); Soundwave $429, Mini Series $143
+# List-price examples for UI (NZD); Soundwave $429, Mini Series $99.99
 EARNINGS_DISPLAY_NZD: Dict[str, Dict[str, float]] = {
     "Soundwave Display": {"20%": 85.80, "25%": 107.25, "30%": 128.70},
-    "Mini Series": {"20%": 28.60, "25%": 35.75, "30%": 42.90},
+    "Mini Series": {"20%": 20.00, "25%": 25.00, "30%": 30.00},
 }
 
 LIST_PRICE_SOUNDWAVE_NZD = 429
-LIST_PRICE_MINI_SERIES_NZD = 143
+LIST_PRICE_MINI_SERIES_NZD = 99.99
 
 
 def next_payout_date_for_month(year: int, month: int) -> date:

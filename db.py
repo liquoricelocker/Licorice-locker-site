@@ -521,10 +521,10 @@ def _sync_product_catalog_prices(db: sqlite3.Connection) -> None:
     """List prices in NZD (cents). Idempotent UPDATEs so existing DBs match the storefront."""
     for cents, slug in (
         (42900, "sound-wave"),
-        (14300, "riff"),
-        (14300, "allegro"),
-        (14300, "harmony"),
-        (14300, "melody"),
+        (9999, "riff"),
+        (9999, "allegro"),
+        (9999, "harmony"),
+        (9999, "melody"),
     ):
         db.execute("UPDATE products SET price_cents = ? WHERE slug = ?", (cents, slug))
 
@@ -865,10 +865,10 @@ def _core_catalog_product_rows() -> List[Tuple[str, str, int, str, int, int]]:
     """Single source of truth for storefront SKUs (matches seed_if_empty)."""
     return [
         ("sound-wave", "Sound Wave", 42900, _SOUND_WAVE_DESCRIPTION.split("\n\n")[0], 0, 1),
-        ("allegro", "Allegra", 14300, _ALLEGRA_DESCRIPTION.split("\n\n")[0], 1, 0),
-        ("melody", "Melody", 14300, _MELODY_DESCRIPTION.split("\n\n")[0], 2, 0),
-        ("harmony", "Harmony", 14300, _HARMONY_DESCRIPTION.split("\n\n")[0], 3, 0),
-        ("riff", "Riff", 14300, _RIFF_DESCRIPTION.split("\n\n")[0], 4, 0),
+        ("allegro", "Allegra", 9999, _ALLEGRA_DESCRIPTION.split("\n\n")[0], 1, 0),
+        ("melody", "Melody", 9999, _MELODY_DESCRIPTION.split("\n\n")[0], 2, 0),
+        ("harmony", "Harmony", 9999, _HARMONY_DESCRIPTION.split("\n\n")[0], 3, 0),
+        ("riff", "Riff", 9999, _RIFF_DESCRIPTION.split("\n\n")[0], 4, 0),
     ]
 
 
