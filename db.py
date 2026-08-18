@@ -743,11 +743,11 @@ _PRODUCT_DIMS_MM: Dict[str, Tuple[float, float, float]] = {
 }
 
 _PRODUCT_CAPACITY: Dict[str, int] = {
-    "sound-wave": 40,
-    "allegro": 12,
-    "melody": 24,
-    "harmony": 32,
-    "riff": 8,
+    "sound-wave": 50,
+    "allegro": 14,
+    "melody": 14,
+    "harmony": 14,
+    "riff": 14,
 }
 
 _PRODUCT_COLLECTION: Dict[str, str] = {
@@ -984,13 +984,14 @@ def _backfill_sound_wave_marketing(db: sqlite3.Connection) -> None:
     )
     db.execute(
         """
-        UPDATE products SET dimensions = ?, materials = ?, capacity = ?
+        UPDATE products SET dimensions = ?, materials = ?, capacity = ?, capacity_records = ?
         WHERE slug = 'sound-wave'
         """,
         (
             "312 × 198 × 94 mm (W × D × H)",
             "Clear acrylic structure — minimal, precision-cut supports.",
-            "Holds up to 40 LPs on display; cover artwork stays visible in sequence.",
+            "Holds up to 50 LPs on display; cover artwork stays visible in sequence.",
+            50,
         ),
     )
     db.execute("DELETE FROM product_images WHERE product_id = ?", (pid,))
@@ -1019,13 +1020,14 @@ def _backfill_allegra_marketing(db: sqlite3.Connection) -> None:
     )
     db.execute(
         """
-        UPDATE products SET dimensions = ?, materials = ?, capacity = ?
+        UPDATE products SET dimensions = ?, materials = ?, capacity = ?, capacity_records = ?
         WHERE slug = 'allegro'
         """,
         (
             "210 × 120 × 38 mm (W × D × H)",
             "Clear acrylic — minimal supports; precision spacing.",
-            "Holds up to 12 LPs on display; albums stay accessible and visible.",
+            "Holds up to 14 LPs on display; albums stay accessible and visible.",
+            14,
         ),
     )
     db.execute("DELETE FROM product_images WHERE product_id = ?", (pid,))
@@ -1052,13 +1054,14 @@ def _backfill_harmony_marketing(db: sqlite3.Connection) -> None:
     )
     db.execute(
         """
-        UPDATE products SET dimensions = ?, materials = ?, capacity = ?
+        UPDATE products SET dimensions = ?, materials = ?, capacity = ?, capacity_records = ?
         WHERE slug = 'harmony'
         """,
         (
             "280 × 200 × 64 mm (W × D × H)",
             "Clear acrylic — minimal supports; aligned, cohesive rows.",
-            "Holds up to 32 LPs on display; unified presence, calm order.",
+            "Holds up to 14 LPs on display; unified presence, calm order.",
+            14,
         ),
     )
     db.execute("DELETE FROM product_images WHERE product_id = ?", (pid,))
@@ -1085,13 +1088,14 @@ def _backfill_melody_marketing(db: sqlite3.Connection) -> None:
     )
     db.execute(
         """
-        UPDATE products SET dimensions = ?, materials = ?, capacity = ?
+        UPDATE products SET dimensions = ?, materials = ?, capacity = ?, capacity_records = ?
         WHERE slug = 'melody'
         """,
         (
             "240 × 160 × 52 mm (W × D × H)",
             "Clear acrylic — minimal supports; even, rhythmic spacing.",
-            "Holds up to 24 LPs on display; modest selection, deliberate arrangement.",
+            "Holds up to 14 LPs on display; modest selection, deliberate arrangement.",
+            14,
         ),
     )
     db.execute("DELETE FROM product_images WHERE product_id = ?", (pid,))
@@ -1118,13 +1122,14 @@ def _backfill_riff_marketing(db: sqlite3.Connection) -> None:
     )
     db.execute(
         """
-        UPDATE products SET dimensions = ?, materials = ?, capacity = ?
+        UPDATE products SET dimensions = ?, materials = ?, capacity = ?, capacity_records = ?
         WHERE slug = 'riff'
         """,
         (
             "190 × 110 × 42 mm (W × D × H)",
             "Clear acrylic — compact footprint; records appear to float.",
-            "Holds up to 8 LPs on display; curated selection, side-by-side modular growth.",
+            "Holds up to 14 LPs on display; curated selection, side-by-side modular growth.",
+            14,
         ),
     )
     db.execute("DELETE FROM product_images WHERE product_id = ?", (pid,))
@@ -1144,27 +1149,27 @@ def _ensure_product_specs(db: sqlite3.Connection) -> None:
         "sound-wave": (
             "312 × 198 × 94 mm (W × D × H)",
             "Clear acrylic structure — minimal, precision-cut supports.",
-            "Holds up to 40 LPs on display; cover artwork stays visible in sequence.",
+            "Holds up to 50 LPs on display; cover artwork stays visible in sequence.",
         ),
         "allegro": (
             "210 × 120 × 38 mm (W × D × H)",
             "Clear acrylic — minimal supports; precision spacing.",
-            "Holds up to 12 LPs on display; albums stay accessible and visible.",
+            "Holds up to 14 LPs on display; albums stay accessible and visible.",
         ),
         "melody": (
             "240 × 160 × 52 mm (W × D × H)",
             "Clear acrylic — minimal supports; even, rhythmic spacing.",
-            "Holds up to 24 LPs on display; modest selection, deliberate arrangement.",
+            "Holds up to 14 LPs on display; modest selection, deliberate arrangement.",
         ),
         "harmony": (
             "280 × 200 × 64 mm (W × D × H)",
             "Clear acrylic — minimal supports; aligned, cohesive rows.",
-            "Holds up to 32 LPs on display; unified presence, calm order.",
+            "Holds up to 14 LPs on display; unified presence, calm order.",
         ),
         "riff": (
             "190 × 110 × 42 mm (W × D × H)",
             "Clear acrylic — compact footprint; records appear to float.",
-            "Holds up to 8 LPs on display; curated selection, side-by-side modular growth.",
+            "Holds up to 14 LPs on display; curated selection, side-by-side modular growth.",
         ),
     }
     for slug, (dim, mat, cap) in specs.items():
