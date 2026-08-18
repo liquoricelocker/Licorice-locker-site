@@ -1,4 +1,4 @@
-"""Monthly commission tiers and bonuses for Licorice Locker Listening Room (affiliate) program."""
+"""Monthly commission tiers and bonuses for Liquorice Locker Listening Room (affiliate) program."""
 
 from __future__ import annotations
 

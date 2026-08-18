@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Licorice Locker — Flask web app."""
+"""Liquorice Locker — Flask web app."""
 
 from dotenv import load_dotenv
 
@@ -3791,7 +3791,7 @@ def create_listening_room_user(
 
 
 app.logger.info(
-    "Licorice Locker configuration: stripe_secret=%s stripe_secret_mode=%s stripe_public=%s stripe_public_mode=%s "
+    "Liquorice Locker configuration: stripe_secret=%s stripe_secret_mode=%s stripe_public=%s stripe_public_mode=%s "
     "stripe_webhook=%s "
     "resend=%s site_url=%r proxy_trust=%s "
     "(set SITE_URL to your canonical public origin, e.g. https://www.licoricelocker.com)",

@@ -1,4 +1,4 @@
-"""SQLite database for Licorice Locker."""
+"""SQLite database for Liquorice Locker."""
 
 from __future__ import annotations
 
@@ -378,6 +378,7 @@ def init_db() -> None:
         db.execute(
             "UPDATE affiliate_pages SET monthly_sales_target = 25 WHERE IFNULL(monthly_sales_target, 0) = 16"
         )
+        _migrate_brand_spelling(db)
         _sync_product_catalog_prices(db)
 
 
@@ -515,6 +516,15 @@ def _migrate_orders_geo_columns(db: sqlite3.Connection) -> None:
         db.execute("ALTER TABLE orders ADD COLUMN geo_country TEXT")
     if "geo_city" not in cols:
         db.execute("ALTER TABLE orders ADD COLUMN geo_city TEXT")
+
+
+def _migrate_brand_spelling(db: sqlite3.Connection) -> None:
+    """Update stored affiliate copy from Licorice Locker to Liquorice Locker."""
+    for col in ("headline", "tagline", "description"):
+        db.execute(
+            f"UPDATE affiliate_pages SET {col} = REPLACE({col}, 'Licorice Locker', 'Liquorice Locker') "
+            f"WHERE {col} LIKE '%Licorice Locker%'"
+        )
 
 
 def _sync_product_catalog_prices(db: sqlite3.Connection) -> None:
@@ -1194,7 +1204,7 @@ def seed_if_empty() -> None:
             (
                 aff_id,
                 "Sound that travels with you",
-                "Licorice Locker — curated audio gear",
+                "Liquorice Locker — curated audio gear",
                 "I only share gear I use. Every purchase supports independent sound design.",
                 25,
             ),

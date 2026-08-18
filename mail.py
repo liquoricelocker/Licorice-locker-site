@@ -1,4 +1,4 @@
-"""Licorice Locker — all outbound email. Resend (HTML) primary; SMTP fallback. Templates live here."""
+"""Liquorice Locker — all outbound email. Resend (HTML) primary; SMTP fallback. Templates live here."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def _email_logo_url() -> str:
 def _resend_from_address() -> str:
     return (
         os.environ.get("RESEND_FROM", "").strip()
-        or "Licorice Locker <orders@licoricelocker.com>"
+        or "Liquorice Locker <orders@licoricelocker.com>"
     ).strip()
 
 
@@ -182,7 +182,7 @@ def _wrap_brand_html(title: str, inner_html: str) -> str:
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:560px;background-color:#ffffff;border-radius:2px;overflow:hidden;border:1px solid rgba(180,184,171,0.55);">
         <tr><td style="padding:28px 28px 12px 28px;text-align:center;">
-          <p style="margin:0 0 10px 0;font-size:11px;letter-spacing:0.22em;font-weight:700;text-transform:uppercase;color:#25181d;">Licorice Locker</p>
+          <p style="margin:0 0 10px 0;font-size:11px;letter-spacing:0.22em;font-weight:700;text-transform:uppercase;color:#25181d;">Liquorice Locker</p>
           <img src="{html_module.escape(_email_logo_url())}" alt="" width="200" height="auto" style="max-width:200px;height:auto;display:block;margin:0 auto;border:0;" />
         </td></tr>
         <tr><td style="padding:8px 28px 32px 28px;color:#25181d;font-size:16px;line-height:1.55;">
@@ -228,7 +228,7 @@ def render_customer_email(order: OrderEmailContext) -> Tuple[str, str]:
           <p style="margin:20px 0 0 0;color:rgba(37,24,29,0.62);">We&apos;ll notify you when your order ships.</p>
 """
     plain = (
-        f"Licorice Locker — Order confirmed\n\n"
+        f"Liquorice Locker — Order confirmed\n\n"
         f"Order: {order.order_number}\n"
         f"Total: {total}\n\n"
         f"Items:\n" + "\n".join(plain_lines) + "\n\n"
@@ -332,7 +332,7 @@ def _send_via_smtp_html(to_addr: str, subject: str, html_body: str, text_plain: 
             subject,
         )
         print(
-            f"[Licorice Locker email — no SMTP_HOST] To: {to_addr}\nSubject: {subject}\n\n{text_plain}\n",
+            f"[Liquorice Locker email — no SMTP_HOST] To: {to_addr}\nSubject: {subject}\n\n{text_plain}\n",
             flush=True,
         )
         return True
@@ -420,7 +420,7 @@ def send_post_purchase_order_emails(order_id: int) -> bool:
             logger.error("post_purchase_emails abort reason=context_load_failed order_id=%s", order_id)
             return False
 
-        cust_subj = "Your order is confirmed – Licorice Locker"
+        cust_subj = "Your order is confirmed – Liquorice Locker"
         html_c, plain_c = render_customer_email(ctx)
         if not is_valid_email(ctx.customer_email):
             logger.error(
@@ -460,7 +460,7 @@ def send_post_purchase_order_emails(order_id: int) -> bool:
             ha, pa = render_admin_email(ctx)
             send_html_email(
                 admin_to,
-                "New Order – Licorice Locker",
+                "New Order – Liquorice Locker",
                 ha,
                 pa,
                 purpose="post_purchase_admin",
@@ -483,7 +483,7 @@ def send_order_receipt_email_fallback(order_id: int) -> bool:
         html_c, plain_c = render_customer_email(ctx)
         return send_html_email(
             ctx.customer_email,
-            "Your order is confirmed – Licorice Locker",
+            "Your order is confirmed – Liquorice Locker",
             html_c,
             plain_c,
             purpose="receipt_fallback",
@@ -513,7 +513,7 @@ def send_order_confirmation(
 """
     html_b = _wrap_brand_html("Order confirmed", inner)
     plain = (
-        f"Thank you for your order from Licorice Locker.\n\n"
+        f"Thank you for your order from Liquorice Locker.\n\n"
         f"Order: {order_number}\nTotal: {total_display}\n\nItems:\n{lines}\n\n"
         f"We will notify you when your order ships."
     )
@@ -543,13 +543,13 @@ def send_password_reset_email(to_addr: str, reset_url: str) -> bool:
 """
     html_b = _wrap_brand_html("Password reset", inner)
     plain = (
-        "Password reset — Licorice Locker\n\n"
+        "Password reset — Liquorice Locker\n\n"
         f"{reset_url}\n\n"
         "If you did not request this, ignore this email.\n"
     )
     return send_html_email(
         to_addr,
-        "Reset your Listening Room password — Licorice Locker",
+        "Reset your Listening Room password — Liquorice Locker",
         html_b,
         plain,
         purpose="password_reset",

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{% block title %}Licorice Locker{% endblock %}</title>
+  <title>{% block title %}Liquorice Locker{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -62,7 +62,7 @@
         </a>
       </div>
       <a class="logo-home" href="{{ header_home_url }}" title="Home">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker — Home" width="200" height="48">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Liquorice Locker — Home" width="200" height="48">
       </a>
       <div class="header-right">
         <button type="button" class="burger-btn" id="burger-menu-btn" aria-expanded="false" aria-controls="slide-menu" aria-label="Open menu">
@@ -172,18 +172,18 @@
       </div>
       <div class="site-footer-brand-row">
         <div class="site-footer-logo">
-          <img src="{{ url_for('static', filename='logo.png') }}" alt="Licorice Locker" width="180" height="44" decoding="async">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="Liquorice Locker" width="180" height="44" decoding="async">
         </div>
         {% if not current_user.is_authenticated %}
         <div class="site-footer-brand-aside">
           <button type="button" class="btn primary site-footer-signin-btn" id="affiliate-login-open-btn" aria-haspopup="dialog" aria-controls="affiliate-login-modal">Sign in</button>
           <p class="site-footer-copy">
-            Licorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Licorice Locker 2026.
+            Liquorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Liquorice Locker 2026.
           </p>
         </div>
         {% else %}
         <p class="site-footer-copy">
-          Licorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Licorice Locker 2026.
+          Liquorice Locker designs sculptural vinyl record displays that transform music into spatial art. Designed and manufactured in New Zealand © Liquorice Locker 2026.
         </p>
         {% endif %}
       </div>

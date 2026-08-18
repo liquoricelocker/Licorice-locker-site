@@ -1,5 +1,5 @@
 {% extends "affiliate_base.html" %}
-{% block title %}Your Listening Room — Licorice Locker{% endblock %}
+{% block title %}Your Listening Room — Liquorice Locker{% endblock %}
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 {% endblock %}
@@ -72,7 +72,7 @@
     {% set collab_lines = [
       'Hi ' ~ peer_name ~ ',',
       '',
-      'I\'m ' ~ my_name ~ ' from Licorice Locker\'s Listening Room. I\'d love to connect about a collaboration, cross-promotion, or just to say hello as fellow members.',
+      'I\'m ' ~ my_name ~ ' from Liquorice Locker\'s Listening Room. I\'d love to connect about a collaboration, cross-promotion, or just to say hello as fellow members.',
       '',
       'About me:',
       '- Country / region: ' ~ (my_country if my_country else '—'),
@@ -85,7 +85,7 @@
     ] %}
     {% set _ = collab_lines.extend(['', 'Thanks,', my_name]) %}
     {% set collab_body = collab_lines|join('\n') %}
-    {% set collab_subject = 'Listening Room collab — Licorice Locker' %}
+    {% set collab_subject = 'Listening Room collab — Liquorice Locker' %}
     {% set collab_href = 'mailto:' ~ (f.email|urlencode) ~ '?subject=' ~ (collab_subject|urlencode) ~ '&body=' ~ (collab_body|urlencode) %}
     {% set peer_slug = (f.affiliate_slug or '')|trim %}
     {% set peer_search_blob = (peer_name ~ ' ' ~ f.email ~ ' ' ~ peer_country ~ ' ' ~ peer_slug ~ ' ' ~ peer_code ~ ' ' ~ peer_ig ~ ' ' ~ peer_tt)|lower %}
@@ -170,7 +170,7 @@
 <section class="panel affiliate-bank-details-panel" id="affiliate-bank-details">
   <h2>Payout bank details</h2>
   <p class="muted small affiliate-bank-details-lede">
-    Add the account our accountant should pay your commissions into. Only Licorice Locker admins can see this — it is not shown on your public Listening Room.
+    Add the account our accountant should pay your commissions into. Only Liquorice Locker admins can see this — it is not shown on your public Listening Room.
   </p>
   <form method="post" action="{{ url_for('affiliate_bank_details_save') }}" class="form-stack affiliate-bank-details-form">
     <label for="affiliate-bank-details-input">Bank account details
@@ -189,7 +189,7 @@
 
 <section class="panel creative-library-panel">
   <h2>Creative library</h2>
-  <p class="muted small">Curated photos and videos from Licorice Locker for your social channels. Download and use in your posts.</p>
+  <p class="muted small">Curated photos and videos from Liquorice Locker for your social channels. Download and use in your posts.</p>
   {% if creative_assets %}
   <div class="creative-library-grid">
     {% for a in creative_assets %}
