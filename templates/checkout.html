@@ -48,16 +48,60 @@
     </li>
     {% endfor %}
   </ul>
-  <p class="total-line">
-    Subtotal: <strong><span data-nzd-cents="{{ total }}">{{ format_money(total) }}</span></strong>
-    · Shipping: <strong><span data-nzd-cents="{{ checkout_shipping_cents|default(0) }}">{{ format_money(checkout_shipping_cents|default(0)) }}</span></strong>
-    · Total: <strong><span data-nzd-cents="{{ total + (checkout_shipping_cents|default(0)) }}">{{ format_money(total + (checkout_shipping_cents|default(0))) }}</span></strong>
-  </p>
-  <p class="muted small ll-currency-disclaimer">Prices in USD or EUR are estimates. Final payment is processed in NZD.</p>
-  <p class="muted small">Shipping shown above is included in what you pay at checkout (set via site configuration). You will confirm your delivery address on our secure Stripe payment page.</p>
 
-  <h2>Order notes</h2>
+  <form method="get" action="{{ url_for('checkout') }}" class="form-stack checkout-destination-form">
+    <label>Ship to
+      <select name="country" onchange="this.form.submit()">
+        {% for code in checkout_countries %}
+        <option value="{{ code }}" {% if code == selected_country %}selected{% endif %}>{{ country_label(code) }} ({{ code }})</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+
+  {% if shipping_error %}
+  <p class="notice" role="alert">{{ shipping_error }}
+    {% if selected_country and selected_country not in ['NZ', 'AU'] %}
+    Email <a href="mailto:{{ footer_email }}">{{ footer_email }}</a> for a freight quote.
+    {% endif %}
+  </p>
+  {% endif %}
+
+  {% if shipping_quotes %}
   <form method="post" class="form-grid js-checkout-stripe-form">
+    <input type="hidden" name="country" value="{{ selected_country }}">
+    <fieldset class="full checkout-shipping-methods">
+      <legend>Shipping method</legend>
+      {% for q in shipping_quotes %}
+      <label class="checkout-shipping-option">
+        <input
+          type="radio"
+          name="shipping_method"
+          value="{{ q.shipping_method }}"
+          {% if q.shipping_method == selected_method %}checked{% endif %}
+          required
+        >
+        <span>
+          <strong>{{ q.shipping_method_name }}</strong>
+          — <span data-nzd-cents="{{ q.price_cents }}">{{ q.price_cents|shipping_price }}</span>
+          {% if q.estimated_min_days is not none and q.estimated_max_days is not none %}
+          <span class="muted small">Estimated {{ q.estimated_min_days }}–{{ q.estimated_max_days }} business days</span>
+          {% endif %}
+        </span>
+      </label>
+      {% endfor %}
+    </fieldset>
+
+    {% set ship = checkout_shipping_cents if checkout_shipping_cents is not none else 0 %}
+    <p class="total-line full">
+      Subtotal: <strong><span data-nzd-cents="{{ total }}">{{ format_money(total) }}</span></strong>
+      · Shipping: <strong>{% if checkout_shipping_cents is none %}—{% else %}<span data-nzd-cents="{{ ship }}">{{ ship|shipping_price }}</span>{% endif %}</strong>
+      · Total: <strong>{% if checkout_shipping_cents is none %}—{% else %}<span data-nzd-cents="{{ total + ship }}">{{ format_money(total + ship) }}</span>{% endif %}</strong>
+    </p>
+    <p class="muted small ll-currency-disclaimer">Prices in USD or EUR are estimates. Final payment is processed in NZD.</p>
+    <p class="muted small">Shipping is calculated from your destination and cart. You will confirm your delivery address on our secure Stripe payment page. Estimates are not guaranteed delivery dates.</p>
+
+    <h2 class="full">Order notes</h2>
     <label class="full">Notes for us (optional, max 500 characters)
       <textarea name="notes" rows="3" maxlength="500" placeholder="Delivery instructions or special requests — you can also add details after payment by email."></textarea>
     </label>
@@ -69,9 +113,17 @@
       {% endif %}
     </div>
   </form>
+  {% else %}
+  <p class="total-line">
+    Subtotal: <strong><span data-nzd-cents="{{ total }}">{{ format_money(total) }}</span></strong>
+    · Shipping: <strong>—</strong>
+    · Total: <strong>—</strong>
+  </p>
+  <p class="muted small">{% if selected_country and selected_country not in ['NZ', 'AU'] %}Online checkout is available for New Zealand and Australia. For other countries, contact us for a freight quote.{% else %}A shipping method is required before payment. We will not charge $0 shipping unless a free-shipping rate is configured.{% endif %}</p>
+  {% endif %}
   {% endif %}
 </section>
-{% if payments_ready and items %}
+{% if payments_ready and items and shipping_quotes %}
 <script>
 (function () {
   var form = document.querySelector('.js-checkout-stripe-form');
@@ -79,6 +131,12 @@
   form.addEventListener('submit', function () {
     form.querySelectorAll('.js-checkout-stripe-submit').forEach(function (btn) {
       btn.disabled = true;
+    });
+  });
+  form.querySelectorAll('input[name="shipping_method"]').forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      var url = {{ url_for('checkout')|tojson }} + '?country=' + encodeURIComponent({{ selected_country|tojson }}) + '&method=' + encodeURIComponent(radio.value);
+      window.location = url;
     });
   });
 })();

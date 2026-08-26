@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Shipping pricing — Admin{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="muted small"><a href="{{ url_for('admin_dashboard') }}">← Admin</a></p>
+  <h1>Shipping pricing</h1>
+  <p class="muted">Rates live in the database. Changing a rate here updates the next checkout immediately. Existing orders keep the shipping amount they paid.</p>
+
+  <h2>Zones</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Zone</th>
+        <th>Code</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for z in zones %}
+      <tr>
+        <td>{{ z.name }}</td>
+        <td>{{ z.code }}{% if z.catch_all %} · rest of world{% endif %}</td>
+        <td>{% if z.active %}Active{% else %}Inactive{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Methods</h2>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Method</th>
+        <th>Code</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in methods %}
+      <tr>
+        <td>{{ m.name }}</td>
+        <td>{{ m.code }}</td>
+        <td>{% if m.active %}Active{% else %}Inactive{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if integrity.duplicate_active_overlapping_rules %}
+  <p class="notice" role="alert">{{ integrity.duplicate_active_overlapping_rules }} overlapping active rate pair(s) at the same priority. Checkout will refuse those methods until the rules are unique.</p>
+  {% endif %}
+  <p><a class="btn primary" href="{{ url_for('admin_shipping_rate_new') }}">Create rate</a></p>
+  <div class="admin-orders-scroll">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Zone</th>
+          <th>Method</th>
+          <th>Price</th>
+          <th>Rule</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rates %}
+        <tr>
+          <td>{{ r.zone_name }}</td>
+          <td>{{ r.method_name }}</td>
+          <td>{{ r.price_label }}</td>
+          <td>{{ r.rule_label }}</td>
+          <td>{% if r.active %}Active{% else %}Inactive{% endif %}</td>
+          <td>
+            <a href="{{ url_for('admin_shipping_rate_edit', rate_id=r.id) }}">Edit</a>
+            <form method="post" action="{{ url_for('admin_shipping_rate_toggle', rate_id=r.id) }}" style="display:inline">
+              {% include "_csrf.html" %}
+              <button type="submit" class="btn">{% if r.active %}Deactivate{% else %}Activate{% endif %}</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No rates yet. Create a rate before customers can check out.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Packaging weight</h2>
+  <p class="muted small">Added to product weight when quoting (grams). Leave 0 if unused.</p>
+  <form method="post" action="{{ url_for('admin_shipping_settings') }}" class="form-stack">
+    {% include "_csrf.html" %}
+    <label>Packaging allowance (grams)
+      <input type="number" name="packaging_weight_grams" min="0" step="1" value="{{ packaging_weight_grams }}">
+    </label>
+    <button type="submit" class="btn primary">Save packaging weight</button>
+  </form>
+
+  {% if missing_weights %}
+  <h2>Products missing shipping weight</h2>
+  <p class="notice">These sellable products have no <code>weight_grams</code>. Weight-based rates will not match until weights are set. The system will not invent a weight.</p>
+  <ul>
+    {% for v in missing_weights %}
+    <li>{{ v.product_name }}{% if v.sku %} ({{ v.sku }}){% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

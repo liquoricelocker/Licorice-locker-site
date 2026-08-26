@@ -20,8 +20,23 @@ def rate_for_nth_sale(n: int) -> float:
     return 0.20
 
 
+# Integer cents for any financial display derived from list prices.
+LIST_PRICE_SOUNDWAVE_CENTS = 42900
+LIST_PRICE_MINI_SERIES_CENTS = 9999
+LIST_PRICE_SOUNDWAVE_NZD = 429
+LIST_PRICE_MINI_SERIES_NZD = 99.99
+
+
 def commission_cents_for_nth_sale(nth_sale: int, order_total_cents: int) -> int:
-    return int(round(order_total_cents * rate_for_nth_sale(nth_sale)))
+    """Integer-cents commission. Uses percent integers, not float dollars."""
+    n = int(nth_sale)
+    if n >= 25:
+        pct = 30
+    elif n >= 10:
+        pct = 25
+    else:
+        pct = 20
+    return (int(order_total_cents) * pct + 50) // 100
 
 
 def tier_name_for_completed_sales(completed_count: int) -> str:
@@ -77,9 +92,6 @@ EARNINGS_DISPLAY_NZD: Dict[str, Dict[str, float]] = {
     "Soundwave Display": {"20%": 85.80, "25%": 107.25, "30%": 128.70},
     "Mini Series": {"20%": 20.00, "25%": 25.00, "30%": 30.00},
 }
-
-LIST_PRICE_SOUNDWAVE_NZD = 429
-LIST_PRICE_MINI_SERIES_NZD = 99.99
 
 
 def next_payout_date_for_month(year: int, month: int) -> date:

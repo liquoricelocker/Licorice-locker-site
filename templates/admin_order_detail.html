@@ -18,6 +18,7 @@
     <div class="admin-order-fulfill-card">
       <p class="admin-order-fulfill-label">Fulfillment</p>
       <form method="post" action="{{ url_for('admin_order_fulfillment', order_id=order.id) }}" class="admin-fulfillment-toggle-form">
+        {% include "_csrf.html" %}
         <input type="hidden" name="fulfilled" id="admin-fulfilled-hidden" value="{{ '1' if is_fulfilled else '0' }}">
         <input type="hidden" name="return_to" value="detail">
         <input type="hidden" name="search_q" value="">
@@ -82,8 +83,8 @@
             <span>{{ format_money(subtotal_cents) }}</span>
           </div>
           <div class="admin-order-total-row">
-            <span>Shipping</span>
-            <span>{{ format_money(shipping_cents) }}</span>
+            <span>Shipping{% if order.shipping_method_name %} ({{ order.shipping_method_name }}){% endif %}</span>
+            <span>{{ shipping_cents|shipping_price }}</span>
           </div>
           <div class="admin-order-total-row admin-order-total-grand">
             <span>Total</span>
@@ -95,6 +96,7 @@
       <section class="admin-card">
         <h2 class="admin-card-title">Shipping &amp; tracking</h2>
         <form method="post" class="form-stack admin-order-tracking-form">
+          {% include "_csrf.html" %}
           <input type="hidden" name="action" value="tracking">
           <label>Tracking number
             <input name="shipping_tracking" value="{{ order.shipping_tracking or '' }}" placeholder="Carrier tracking ID" autocomplete="off">

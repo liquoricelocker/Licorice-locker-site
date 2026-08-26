@@ -173,6 +173,7 @@
     Add the account our accountant should pay your commissions into. Only Liquorice Locker admins can see this — it is not shown on your public Listening Room.
   </p>
   <form method="post" action="{{ url_for('affiliate_bank_details_save') }}" class="form-stack affiliate-bank-details-form">
+    {% include "_csrf.html" %}
     <label for="affiliate-bank-details-input">Bank account details
       <textarea
         id="affiliate-bank-details-input"
@@ -475,6 +476,7 @@
     <p class="affiliate-delete-pending-notice">You have pending commission. Eligible amounts already recorded are still paid on the usual schedule where applicable.</p>
     {% endif %}
     <form method="post" action="{{ url_for('affiliate_delete_account') }}" class="affiliate-delete-form" id="affiliate-delete-form">
+      {% include "_csrf.html" %}
       <label for="affiliate-delete-confirm">Type <strong>DELETE</strong> to confirm</label>
       <input type="text" id="affiliate-delete-confirm" name="confirm_text" autocomplete="off" required>
       <label for="affiliate-delete-password">Your password</label>

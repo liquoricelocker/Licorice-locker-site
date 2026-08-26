@@ -67,6 +67,7 @@
     <div class="admin-orders-command-title">
       <h1 class="admin-orders-h1">All orders</h1>
       <p class="muted admin-orders-sub" id="admin-live">Loading…</p>
+      <p class="muted small"><a href="{{ url_for('admin_shipping') }}">Shipping pricing</a></p>
     </div>
     <form method="get" action="{{ url_for('admin_dashboard') }}" class="admin-orders-search-form" id="admin-orders-search-form" role="search">
       <input type="hidden" name="sa_q" value="{{ sa_q }}">
@@ -124,6 +125,7 @@
           </td>
           <td>
             <form method="post" action="{{ url_for('admin_order_fulfillment', order_id=o.id) }}" class="admin-fulfillment-form">
+              {% include "_csrf.html" %}
               <input type="hidden" name="search_q" value="{{ search_q }}">
               <label class="sr-only" for="fulfill-{{ o.id }}">Fulfillment for {{ o.order_number }}</label>
               <select id="fulfill-{{ o.id }}" name="fulfilled" class="admin-fulfillment-select" onchange="this.form.submit()">
@@ -203,6 +205,7 @@
             <span class="admin-payout-badge {% if is_paid %}admin-payout-paid{% else %}admin-payout-pending{% endif %}">{{ 'Paid' if is_paid else 'Not paid' }}</span>
             {% if not is_paid and payable > 0 %}
             <form method="post" action="{{ url_for('admin_mark_affiliate_paid') }}" class="admin-mark-paid-form">
+              {% include "_csrf.html" %}
               <input type="hidden" name="affiliate_user_id" value="{{ s.id }}">
               <input type="hidden" name="year_month" value="{{ successful_month_ym }}">
               <input type="hidden" name="search_q" value="{{ search_q }}">
@@ -267,6 +270,7 @@
   <div class="admin-creative-upload-card">
     <h3 class="admin-creative-upload-heading">Upload new asset</h3>
     <form class="admin-creative-upload-form" method="post" action="{{ url_for('admin_creative_library_upload') }}" enctype="multipart/form-data">
+      {% include "_csrf.html" %}
       <div class="admin-creative-fields">
         <div class="admin-creative-title-section">
           <label class="admin-creative-label">
@@ -317,6 +321,7 @@
       {% endif %}
       <div class="admin-creative-asset-actions">
         <form method="post" action="{{ url_for('admin_creative_library_delete', asset_id=a['id']) }}" class="admin-creative-delete-form" onsubmit="return confirm('Delete this asset from the library for all members? Files will be removed.');">
+          {% include "_csrf.html" %}
           <button type="submit" class="btn admin-creative-delete-btn">Delete</button>
         </form>
       </div>

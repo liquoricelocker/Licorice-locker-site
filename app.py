@@ -42,6 +42,9 @@ import stripe
 import db as database
 import feature_flags
 from tracking import client_ip_from_request, device_class_from_user_agent, geo_lookup, ip_fingerprint
+import csrf
+import commerce_state
+import shipping as shipping_mod
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +53,8 @@ PRODUCT_DETAIL_MAX_IMAGES = 5
 from commissions import (
     COMMISSION_TIERS,
     EARNINGS_DISPLAY_NZD,
-    LIST_PRICE_MINI_SERIES_NZD,
-    LIST_PRICE_SOUNDWAVE_NZD,
+    LIST_PRICE_MINI_SERIES_CENTS,
+    LIST_PRICE_SOUNDWAVE_CENTS,
     commission_cents_for_nth_sale,
     current_rate_for_next_sale_after,
     monthly_milestone_bonus_cents,
@@ -320,12 +323,13 @@ def affiliate_media_src(url: Optional[str]) -> str:
     return url_for("static", filename=fn)
 
 
-# Idempotent schema migrations (safe for gunicorn import). Creates file/tables under DATABASE_PATH; never wipes data.
-database.init_db()
+# Schema migrations + production safety. Never overwrites catalogue data.
+database.bootstrap()
 logger.info(
-    "database_path=%s file_exists=%s",
-    database.DB_PATH,
-    database.DB_PATH.is_file(),
+    "database_path=%s file_exists=%s environment=%s",
+    database.get_database_path(),
+    database.get_database_path().is_file(),
+    database.detect_environment(),
 )
 with database.get_db() as _conn:
     database.sync_admin_allowlist_users(
@@ -349,6 +353,28 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 
+@app.errorhandler(500)
+@app.errorhandler(sqlite3.Error)
+def _safe_server_error(exc: BaseException):
+    """Customer-facing errors must not include SQL, paths, secrets, or stack traces."""
+    logger.exception("unhandled_server_error error_type=%s", type(exc).__name__)
+    if has_request_context() and (request.path or "").startswith("/webhook"):
+        return ("An error occurred", 500)
+    wants_json = False
+    if has_request_context():
+        path = request.path or ""
+        wants_json = path.startswith("/api/") or request.accept_mimetypes.best_match(
+            ["application/json", "text/html"]
+        ) == "application/json"
+    if wants_json:
+        return jsonify({"ok": False, "error": "Something went wrong. Please try again."}), 500
+    return (
+        "<!doctype html><title>Error</title><p>Something went wrong. Please try again.</p>",
+        500,
+        {"Content-Type": "text/html; charset=utf-8"},
+    )
+
+
 def _absolute_site_url(relative_path: str) -> str:
     """If SITE_URL is set (e.g. https://licorice-locker.com), return absolute URLs for header links."""
     base = os.environ.get("SITE_URL", "").rstrip("/")
@@ -357,6 +383,47 @@ def _absolute_site_url(relative_path: str) -> str:
     if relative_path.startswith("/"):
         return base + relative_path
     return f"{base}/{relative_path}"
+
+
+@app.context_processor
+def inject_csrf() -> Dict[str, Any]:
+    return {"csrf_token": csrf.get_csrf_token}
+
+
+@app.template_filter("shipping_price")
+def shipping_price_filter(cents: Any) -> str:
+    try:
+        return shipping_mod.format_shipping_price(int(cents or 0))
+    except (TypeError, ValueError):
+        return shipping_mod.format_shipping_price(0)
+
+
+@app.template_global()
+def country_label(code: Any) -> str:
+    return shipping_mod.country_label(str(code or ""))
+
+
+@app.before_request
+def _csrf_protect_dashboard_mutations():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    if not csrf.path_requires_csrf(request.path or ""):
+        return None
+    if csrf.csrf_token_valid(request):
+        return None
+    logger.warning(
+        "csrf_rejected method=%s path=%s authenticated=%s",
+        request.method,
+        (request.path or "")[:80],
+        bool(getattr(current_user, "is_authenticated", False)),
+    )
+    if request.path.startswith("/api/") or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": False, "error": "invalid_request"}), 403
+    return (
+        "<!doctype html><title>Forbidden</title><p>This request could not be verified. Refresh the page and try again.</p>",
+        403,
+        {"Content-Type": "text/html; charset=utf-8"},
+    )
 
 
 @app.context_processor
@@ -463,8 +530,8 @@ def _earnings_display_for_dashboard() -> Dict[str, Dict[str, float]]:
 
 def _listening_room_top_commission_example_nzd() -> int:
     if feature_flags.SOUNDWAVE_ENABLED:
-        return int(LIST_PRICE_SOUNDWAVE_NZD * 0.30)
-    return int(round(LIST_PRICE_MINI_SERIES_NZD * 0.30))
+        return (LIST_PRICE_SOUNDWAVE_CENTS * 30) // 100
+    return (LIST_PRICE_MINI_SERIES_CENTS * 30) // 100
 
 
 def _listening_room_top_product_label() -> str:
@@ -701,6 +768,7 @@ def _complete_affiliate_login(row: sqlite3.Row):
         database.normalize_email(row["email"] or ""),
     )
     login_user(User(row), remember=True)
+    csrf.reset_csrf_token()
     return jsonify({"ok": True, "redirect": url_for("affiliate_dashboard")})
 
 
@@ -871,7 +939,20 @@ def _cart_line_items(conn: sqlite3.Connection) -> Tuple[List[Dict[str, Any]], in
         qty = int(row["quantity"])
         line = int(p["price_cents"]) * qty
         total += line
-        items.append({"product": p, "quantity": qty, "line_cents": line})
+        variant = database.default_variant_for_product(conn, int(p["id"]))
+        weight = None
+        if variant is not None and variant["weight_grams"] is not None:
+            weight = int(variant["weight_grams"])
+        items.append(
+            {
+                "product": p,
+                "quantity": qty,
+                "line_cents": line,
+                "variant": variant,
+                "weight_grams": weight,
+                "missing_weight": weight is None,
+            }
+        )
     items.sort(key=lambda x: (int(x["product"]["sort_order"]), int(x["product"]["id"])))
     return items, total
 
@@ -950,6 +1031,7 @@ def login():
                 return render_template("login.html")
             logger.info("admin_login_success user_id=%s normalized_email=%s", int(row["id"]), email)
             login_user(User(row), remember=True)
+            csrf.reset_csrf_token()
             return redirect(_dashboard_for_role(User(row)))
     return render_template("login.html")
 
@@ -1039,6 +1121,7 @@ def auth_affiliate_signup():
         logger.error("affiliate_signup missing row after insert user_id=%s", uid)
         return _fail_json(500, "invalid") if wants_json else _fail_form("Something went wrong. Try again.")
     login_user(User(row), remember=True)
+    csrf.reset_csrf_token()
     if wants_json:
         return jsonify({"ok": True, "redirect": url_for("affiliate_dashboard")})
     return redirect(url_for("affiliate_dashboard"))
@@ -1340,8 +1423,8 @@ def listening_room_program():
         "listening_room_program.html",
         signup_url=url_for("shop", open_affiliate_signup="1"),
         shop_url=url_for("shop"),
-        soundwave_cents=int(LIST_PRICE_SOUNDWAVE_NZD * 100),
-        mini_cents=int(LIST_PRICE_MINI_SERIES_NZD * 100),
+        soundwave_cents=LIST_PRICE_SOUNDWAVE_CENTS,
+        mini_cents=LIST_PRICE_MINI_SERIES_CENTS,
         soundwave_enabled=feature_flags.SOUNDWAVE_ENABLED,
         top_commission_example=_listening_room_top_commission_example_nzd(),
         top_product_label=_listening_room_top_product_label(),
@@ -1769,30 +1852,7 @@ def cart_remove():
     return redirect(url_for("cart_view"))
 
 
-_STRIPE_SHIPPING_COUNTRIES = [
-    "NZ",
-    "AU",
-    "US",
-    "GB",
-    "CA",
-    "DE",
-    "FR",
-    "IT",
-    "ES",
-    "NL",
-    "BE",
-    "IE",
-    "AT",
-    "CH",
-    "SE",
-    "NO",
-    "DK",
-    "FI",
-    "PT",
-    "JP",
-    "SG",
-    "HK",
-]
+_STRIPE_SHIPPING_COUNTRIES = list(shipping_mod.STRIPE_CHECKOUT_COUNTRIES)
 
 
 def _as_stripe_dict(obj: Any) -> Dict[str, Any]:
@@ -1995,55 +2055,69 @@ def _stripe_finalize_checkout_session(csid: str, *, source: str) -> Dict[str, An
         ).fetchone()
         if existing:
             oid_e = int(existing["id"])
-            row = conn.execute(
-                "SELECT receipt_sent, total_cents FROM orders WHERE id = ?",
-                (oid_e,),
-            ).fetchone()
-            total = int((row or existing)["total_cents"] or 0)
-            receipt_sent_flag = bool(row and row["receipt_sent"])
-            if not receipt_sent_flag:
-                ok_em = send_post_purchase_order_emails(oid_e)
-                if not ok_em:
-                    ok_em = send_order_receipt_email_fallback(oid_e)
-                if ok_em:
-                    database.mark_order_receipt_sent(conn, oid_e)
-                    receipt_sent_flag = True
-                    app.logger.info(
-                        "stripe_idempotent_email_recovered order_id=%s order_number=%s",
-                        oid_e,
-                        existing["order_number"],
-                    )
-            prows = _order_success_product_rows(conn, oid_e)
-            if source != "webhook":
-                geo_row = conn.execute(
-                    "SELECT geo_country, geo_city FROM orders WHERE id = ?",
+            n_items = int(
+                conn.execute(
+                    "SELECT COUNT(*) AS c FROM order_items WHERE order_id = ?",
+                    (oid_e,),
+                ).fetchone()["c"]
+            )
+            if n_items < 1:
+                app.logger.warning(
+                    "stripe_incomplete_order_detected order_id=%s session_id=%s source=%s",
+                    oid_e,
+                    csid[:24],
+                    source,
+                )
+            else:
+                row = conn.execute(
+                    "SELECT receipt_sent, total_cents FROM orders WHERE id = ?",
                     (oid_e,),
                 ).fetchone()
-                if geo_row and not (geo_row["geo_country"] or geo_row["geo_city"]):
-                    checkout_ip = client_ip_from_request(request)
-                    geo_purchase = geo_lookup(checkout_ip)
-                    gc = (geo_purchase.get("country_code") or "").strip() or None
-                    gcity = (geo_purchase.get("city") or "").strip() or None
-                    conn.execute(
-                        "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
-                        (gc, (gcity[:128] if gcity else None), oid_e),
-                    )
-            app.logger.info(
-                "stripe_checkout_idempotent_replay order_id=%s order_number=%s session_id=%s source=%s",
-                oid_e,
-                existing["order_number"],
-                csid[:24],
-                source,
-            )
-            return {
-                "status": "ok",
-                "order_number": str(existing["order_number"]),
-                "total_cents": total,
-                "receipt_sent": receipt_sent_flag,
-                "detail": "Thanks again — we have your order on record.",
-                "is_new_order": False,
-                "products": prows,
-            }
+                total = int((row or existing)["total_cents"] or 0)
+                receipt_sent_flag = bool(row and row["receipt_sent"])
+                if not receipt_sent_flag:
+                    ok_em = send_post_purchase_order_emails(oid_e)
+                    if not ok_em:
+                        ok_em = send_order_receipt_email_fallback(oid_e)
+                    if ok_em:
+                        database.mark_order_receipt_sent(conn, oid_e)
+                        receipt_sent_flag = True
+                        app.logger.info(
+                            "stripe_idempotent_email_recovered order_id=%s order_number=%s",
+                            oid_e,
+                            existing["order_number"],
+                        )
+                prows = _order_success_product_rows(conn, oid_e)
+                if source != "webhook":
+                    geo_row = conn.execute(
+                        "SELECT geo_country, geo_city FROM orders WHERE id = ?",
+                        (oid_e,),
+                    ).fetchone()
+                    if geo_row and not (geo_row["geo_country"] or geo_row["geo_city"]):
+                        checkout_ip = client_ip_from_request(request)
+                        geo_purchase = geo_lookup(checkout_ip)
+                        gc = (geo_purchase.get("country_code") or "").strip() or None
+                        gcity = (geo_purchase.get("city") or "").strip() or None
+                        conn.execute(
+                            "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
+                            (gc, (gcity[:128] if gcity else None), oid_e),
+                        )
+                app.logger.info(
+                    "stripe_checkout_idempotent_replay order_id=%s order_number=%s session_id=%s source=%s",
+                    oid_e,
+                    existing["order_number"],
+                    csid[:24],
+                    source,
+                )
+                return {
+                    "status": "ok",
+                    "order_number": str(existing["order_number"]),
+                    "total_cents": total,
+                    "receipt_sent": receipt_sent_flag,
+                    "detail": "Thanks again — we have your order on record.",
+                    "is_new_order": False,
+                    "products": prows,
+                }
 
     raw_cs = cs.to_dict()
     meta = dict(raw_cs.get("metadata") or {})
@@ -2088,10 +2162,21 @@ def _stripe_finalize_checkout_session(csid: str, *, source: str) -> Dict[str, An
     customer_notes = (meta.get("customer_notes") or "").strip()
 
     if checkout_mode == "cart":
-        try:
-            shipping_cents = max(0, int(meta.get("shipping_cents") or 0))
-        except (TypeError, ValueError):
-            shipping_cents = 0
+        snap = shipping_mod.snapshot_from_checkout_metadata(meta)
+        shipping_cents = int(snap["shipping_cents"])
+        quoted_country = snap.get("destination_country")
+        if quoted_country and country and quoted_country != country:
+            app.logger.warning(
+                "stripe_shipping_country_mismatch session_id=%s quoted=%s collected=%s source=%s",
+                csid[:32],
+                quoted_country,
+                country,
+                source,
+            )
+            return {
+                "status": "shipping_country_mismatch",
+                "user_message": "Shipping country did not match the quoted destination. Contact us with your receipt.",
+            }
         cart_spec = (meta.get("cart_lines") or "").strip()
         pairs: List[Tuple[int, int]] = []
         for seg in cart_spec.split(","):
@@ -2146,86 +2231,122 @@ def _stripe_finalize_checkout_session(csid: str, *, source: str) -> Dict[str, An
                 "user_message": "Payment amount mismatch. Contact us with your Stripe receipt.",
             }
         total_with_shipping = paid_total
-        with database.get_db() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO orders (
-                    order_number, order_type, affiliate_user_id,
-                    affiliate_code, affiliate_counted,
-                    customer_first, customer_last, customer_email,
-                    customer_phone,
-                    guest_session_id,
-                    shipping_name,
-                    shipping_line1, shipping_line2, shipping_city, shipping_region,
-                    shipping_postal, shipping_country,
-                    subtotal_cents, shipping_cents, total_cents,
-                    payment_method, customer_notes,
-                    status, fulfillment_status,
-                    shipping_tracking,
-                    stripe_checkout_session_id
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    order_number,
-                    otype,
-                    aff_id,
-                    affiliate_code,
-                    affiliate_counted,
-                    first,
-                    last,
-                    email,
-                    phone,
-                    guest_session_id,
-                    shipping_name,
-                    line1,
-                    line2,
-                    city,
-                    region,
-                    postal,
-                    country,
-                    subtotal_cents,
-                    shipping_cents,
-                    total_with_shipping,
-                    "stripe",
-                    customer_notes,
-                    "completed",
-                    "paid",
-                    "",
-                    csid,
-                ),
-            )
-            oid = int(cur.lastrowid)
-            app.logger.info(
-                "order_inserted order_id=%s order_number=%s stripe_session=%s affiliate_user_id=%s total_cents=%s source=%s",
-                oid,
-                order_number,
-                csid[:28],
-                aff_id or 0,
-                total_with_shipping,
-                source,
-            )
-            if source != "webhook":
-                checkout_ip = client_ip_from_request(request)
-                geo_purchase = geo_lookup(checkout_ip)
-                gc = (geo_purchase.get("country_code") or "").strip() or None
-                gcity = (geo_purchase.get("city") or "").strip() or None
-                conn.execute(
-                    "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
-                    (gc, (gcity[:128] if gcity else None), oid),
-                )
-            for pid, qty, unit, _p in order_lines:
-                conn.execute(
+        with database.get_db(immediate=True) as conn:
+            try:
+                cur = conn.execute(
                     """
-                    INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO orders (
+                        order_number, order_type, affiliate_user_id,
+                        affiliate_code, affiliate_counted,
+                        customer_first, customer_last, customer_email,
+                        customer_phone,
+                        guest_session_id,
+                        shipping_name,
+                        shipping_line1, shipping_line2, shipping_city, shipping_region,
+                        shipping_postal, shipping_country,
+                        subtotal_cents, shipping_cents, total_cents,
+                        payment_method, customer_notes,
+                        status, fulfillment_status,
+                        shipping_tracking,
+                        stripe_checkout_session_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (oid, pid, qty, unit),
+                    (
+                        order_number,
+                        otype,
+                        aff_id,
+                        affiliate_code,
+                        affiliate_counted,
+                        first,
+                        last,
+                        email,
+                        phone,
+                        guest_session_id,
+                        shipping_name,
+                        line1,
+                        line2,
+                        city,
+                        region,
+                        postal,
+                        country,
+                        subtotal_cents,
+                        shipping_cents,
+                        total_with_shipping,
+                        "stripe",
+                        customer_notes,
+                        "completed",
+                        "paid",
+                        "",
+                        csid,
+                    ),
                 )
-            if aff_id:
-                dt = _now_utc()
-                apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
-                refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
+                oid = int(cur.lastrowid)
+                duplicate_order = False
+            except sqlite3.IntegrityError:
+                dup = conn.execute(
+                    "SELECT id, order_number, total_cents FROM orders WHERE stripe_checkout_session_id = ?",
+                    (csid,),
+                ).fetchone()
+                if not dup:
+                    raise
+                oid = int(dup["id"])
+                order_number = str(dup["order_number"])
+                total_with_shipping = int(dup["total_cents"] or total_with_shipping)
+                n_existing_items = int(
+                    conn.execute(
+                        "SELECT COUNT(*) AS c FROM order_items WHERE order_id = ?",
+                        (oid,),
+                    ).fetchone()["c"]
+                )
+                duplicate_order = n_existing_items > 0
+                app.logger.info(
+                    "stripe_order_insert_race_recovered order_id=%s session_id=%s complete=%s source=%s",
+                    oid,
+                    csid[:24],
+                    duplicate_order,
+                    source,
+                )
+            if not duplicate_order:
+                app.logger.info(
+                    "order_inserted order_id=%s order_number=%s stripe_session=%s affiliate_user_id=%s total_cents=%s source=%s",
+                    oid,
+                    order_number,
+                    csid[:28],
+                    aff_id or 0,
+                    total_with_shipping,
+                    source,
+                )
+                if source != "webhook":
+                    checkout_ip = client_ip_from_request(request)
+                    geo_purchase = geo_lookup(checkout_ip)
+                    gc = (geo_purchase.get("country_code") or "").strip() or None
+                    gcity = (geo_purchase.get("city") or "").strip() or None
+                    conn.execute(
+                        "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
+                        (gc, (gcity[:128] if gcity else None), oid),
+                    )
+                database.fill_order_items_if_empty(
+                    conn,
+                    oid,
+                    [(p, qty, unit) for _pid, qty, unit, p in order_lines],
+                )
+                shipping_mod.apply_order_shipping_snapshot(conn, oid, snap)
+                database.attach_commerce_records_for_new_order(
+                    conn,
+                    order_id=oid,
+                    csid=csid,
+                    email=email,
+                    first=first,
+                    last=last,
+                    phone=phone,
+                    total_cents=total_with_shipping,
+                    payment_method="stripe",
+                )
+                if aff_id:
+                    dt = _now_utc()
+                    apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
+                    refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
     else:
         try:
             pid = int(meta.get("product_id") or 0)
@@ -2235,10 +2356,21 @@ def _stripe_finalize_checkout_session(csid: str, *, source: str) -> Dict[str, An
             qty = max(1, int(meta.get("quantity") or 1))
         except (TypeError, ValueError):
             qty = 1
-        try:
-            shipping_cents = max(0, int(meta.get("shipping_cents") or 0))
-        except (TypeError, ValueError):
-            shipping_cents = 0
+        snap = shipping_mod.snapshot_from_checkout_metadata(meta)
+        shipping_cents = int(snap["shipping_cents"])
+        quoted_country = snap.get("destination_country")
+        if quoted_country and country and quoted_country != country:
+            app.logger.warning(
+                "stripe_shipping_country_mismatch session_id=%s quoted=%s collected=%s source=%s",
+                csid[:32],
+                quoted_country,
+                country,
+                source,
+            )
+            return {
+                "status": "shipping_country_mismatch",
+                "user_message": "Shipping country did not match the quoted destination. Contact us with your receipt.",
+            }
 
         with database.get_db() as conn:
             p = database.product_by_id(conn, pid)
@@ -2272,85 +2404,122 @@ def _stripe_finalize_checkout_session(csid: str, *, source: str) -> Dict[str, An
 
         total_with_shipping = paid_total
 
-        with database.get_db() as conn:
-            cur = conn.execute(
-                """
-                INSERT INTO orders (
-                    order_number, order_type, affiliate_user_id,
-                    affiliate_code, affiliate_counted,
-                    customer_first, customer_last, customer_email,
-                    customer_phone,
-                    guest_session_id,
-                    shipping_name,
-                    shipping_line1, shipping_line2, shipping_city, shipping_region,
-                    shipping_postal, shipping_country,
-                    subtotal_cents, shipping_cents, total_cents,
-                    payment_method, customer_notes,
-                    status, fulfillment_status,
-                    shipping_tracking,
-                    stripe_checkout_session_id
+        with database.get_db(immediate=True) as conn:
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO orders (
+                        order_number, order_type, affiliate_user_id,
+                        affiliate_code, affiliate_counted,
+                        customer_first, customer_last, customer_email,
+                        customer_phone,
+                        guest_session_id,
+                        shipping_name,
+                        shipping_line1, shipping_line2, shipping_city, shipping_region,
+                        shipping_postal, shipping_country,
+                        subtotal_cents, shipping_cents, total_cents,
+                        payment_method, customer_notes,
+                        status, fulfillment_status,
+                        shipping_tracking,
+                        stripe_checkout_session_id
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        order_number,
+                        otype,
+                        aff_id,
+                        affiliate_code,
+                        affiliate_counted,
+                        first,
+                        last,
+                        email,
+                        phone,
+                        guest_session_id,
+                        shipping_name,
+                        line1,
+                        line2,
+                        city,
+                        region,
+                        postal,
+                        country,
+                        subtotal_cents,
+                        shipping_cents,
+                        total_with_shipping,
+                        "stripe",
+                        "",
+                        "completed",
+                        "paid",
+                        "",
+                        csid,
+                    ),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
+                oid = int(cur.lastrowid)
+                duplicate_order = False
+            except sqlite3.IntegrityError:
+                dup = conn.execute(
+                    "SELECT id, order_number, total_cents FROM orders WHERE stripe_checkout_session_id = ?",
+                    (csid,),
+                ).fetchone()
+                if not dup:
+                    raise
+                oid = int(dup["id"])
+                order_number = str(dup["order_number"])
+                total_with_shipping = int(dup["total_cents"] or total_with_shipping)
+                n_existing_items = int(
+                    conn.execute(
+                        "SELECT COUNT(*) AS c FROM order_items WHERE order_id = ?",
+                        (oid,),
+                    ).fetchone()["c"]
+                )
+                duplicate_order = n_existing_items > 0
+                app.logger.info(
+                    "stripe_order_insert_race_recovered order_id=%s session_id=%s complete=%s source=%s",
+                    oid,
+                    csid[:24],
+                    duplicate_order,
+                    source,
+                )
+            if not duplicate_order:
+                app.logger.info(
+                    "order_inserted order_id=%s order_number=%s stripe_session=%s affiliate_user_id=%s total_cents=%s source=%s",
+                    oid,
                     order_number,
-                    otype,
-                    aff_id,
-                    affiliate_code,
-                    affiliate_counted,
-                    first,
-                    last,
-                    email,
-                    phone,
-                    guest_session_id,
-                    shipping_name,
-                    line1,
-                    line2,
-                    city,
-                    region,
-                    postal,
-                    country,
-                    subtotal_cents,
-                    shipping_cents,
+                    csid[:28],
+                    aff_id or 0,
                     total_with_shipping,
-                    "stripe",
-                    "",
-                    "completed",
-                    "paid",
-                    "",
-                    csid,
-                ),
-            )
-            oid = int(cur.lastrowid)
-            app.logger.info(
-                "order_inserted order_id=%s order_number=%s stripe_session=%s affiliate_user_id=%s total_cents=%s source=%s",
-                oid,
-                order_number,
-                csid[:28],
-                aff_id or 0,
-                total_with_shipping,
-                source,
-            )
-            if source != "webhook":
-                checkout_ip = client_ip_from_request(request)
-                geo_purchase = geo_lookup(checkout_ip)
-                gc = (geo_purchase.get("country_code") or "").strip() or None
-                gcity = (geo_purchase.get("city") or "").strip() or None
-                conn.execute(
-                    "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
-                    (gc, (gcity[:128] if gcity else None), oid),
+                    source,
                 )
-            conn.execute(
-                """
-                INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
-                VALUES (?, ?, ?, ?)
-                """,
-                (oid, pid, qty, unit),
-            )
-            if aff_id:
-                dt = _now_utc()
-                apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
-                refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
+                if source != "webhook":
+                    checkout_ip = client_ip_from_request(request)
+                    geo_purchase = geo_lookup(checkout_ip)
+                    gc = (geo_purchase.get("country_code") or "").strip() or None
+                    gcity = (geo_purchase.get("city") or "").strip() or None
+                    conn.execute(
+                        "UPDATE orders SET geo_country = ?, geo_city = ? WHERE id = ?",
+                        (gc, (gcity[:128] if gcity else None), oid),
+                    )
+                database.fill_order_items_if_empty(
+                    conn,
+                    oid,
+                    [(p, qty, unit)],
+                )
+                shipping_mod.apply_order_shipping_snapshot(conn, oid, snap)
+                database.attach_commerce_records_for_new_order(
+                    conn,
+                    order_id=oid,
+                    csid=csid,
+                    email=email,
+                    first=first,
+                    last=last,
+                    phone=phone,
+                    total_cents=total_with_shipping,
+                    payment_method="stripe",
+                )
+                if aff_id:
+                    dt = _now_utc()
+                    apply_affiliate_commission_rates_for_month(conn, aff_id, dt.year, dt.month)
+                    refresh_commission_snapshot(conn, aff_id, dt.year, dt.month)
 
     receipt_ok = send_post_purchase_order_emails(oid)
     if not receipt_ok:
@@ -2413,7 +2582,12 @@ def _stripe_process_paid_return(csid: str):
 def create_checkout_session():
     """Start Stripe Checkout from the session cart (same flow as checkout page)."""
     notes = (request.form.get("notes") or "").strip()[:500]
-    return _stripe_checkout_redirect_from_cart(notes=notes, error_endpoint="cart_view")
+    country = shipping_mod.normalize_country_code(request.form.get("country") or request.form.get("destination_country"))
+    method = (request.form.get("shipping_method") or "").strip()
+    if not country or not method:
+        flash("Choose a destination and shipping method to continue.", "error")
+        return redirect(url_for("checkout"))
+    return _stripe_checkout_redirect_from_cart(notes=notes, error_endpoint="checkout")
 
 
 @app.route("/checkout/stripe/success")
@@ -2477,11 +2651,20 @@ def stripe_webhook():
                 result.get("status"),
             )
             return ("Webhook processing failed", 500)
+        event_id = str(event.get("id") or "").strip()
+        try:
+            with database.get_db() as conn:
+                database.record_stripe_event_processed(conn, event_id, event_type, csid)
+        except Exception:
+            app.logger.exception(
+                "stripe_event_record_failed operation=record_event entity=stripe_event entity_id=%s",
+                event_id[:24] if event_id else "",
+            )
         app.logger.info(
             "stripe_webhook_checkout_completed session_id=%s order_number=%s existing=%s",
             csid[:24],
             result["order_number"],
-            not bool(result["is_new_order"]),
+            not bool(result.get("is_new_order")),
         )
         return ("", 200)
 
@@ -2506,18 +2689,34 @@ def _stripe_checkout_redirect_from_cart(*, notes: str, error_endpoint: str) -> A
         return redirect(url_for(error_endpoint))
     stripe.api_key = secret
 
+    # Client may submit a shipping amount. It is ignored. Only the method + country are inputs.
+    _ = request.form.get("shipping_cents")
+    _ = request.form.get("shipping_price")
+    _ = request.form.get("shipping_total")
+
+    country = shipping_mod.normalize_country_code(
+        request.form.get("country") or request.form.get("destination_country")
+    )
+    method_code = (request.form.get("shipping_method") or "").strip()
+    if not country:
+        flash("Choose a destination country.", "error")
+        return redirect(url_for("checkout"))
+    if not method_code:
+        flash("Choose a shipping method.", "error")
+        return redirect(url_for("checkout"))
+
     with database.get_db() as conn:
         items, total = _cart_line_items(conn)
+        quote = shipping_mod.calculate_shipping(conn, items, country, method_code)
     if not items:
         flash("Your cart is empty.", "error")
         return redirect(url_for(error_endpoint))
+    if not quote.ok or quote.price_cents is None:
+        flash(quote.user_message(), "error")
+        return redirect(url_for("checkout", country=country))
 
+    shipping_cents = int(quote.price_cents)
     notes_meta = (notes or "").strip()[:500]
-
-    try:
-        default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
-    except ValueError:
-        default_shipping_cents = 0
 
     affiliate_slug = (request.cookies.get("licorice_affiliate_slug") or "").strip()
     guest_session_id = (request.cookies.get("licorice_visitor") or "").strip()
@@ -2549,17 +2748,34 @@ def _stripe_checkout_redirect_from_cart(*, notes: str, error_endpoint: str) -> A
                 "quantity": int(it["quantity"]),
             }
         )
-    if default_shipping_cents > 0:
+    if shipping_cents > 0:
+        ship_name = quote.shipping_method_name or "Shipping"
         line_items.append(
             {
                 "price_data": {
                     "currency": "nzd",
-                    "product_data": {"name": "Shipping"},
-                    "unit_amount": default_shipping_cents,
+                    "product_data": {"name": f"Shipping — {ship_name}"},
+                    "unit_amount": shipping_cents,
                 },
                 "quantity": 1,
             }
         )
+
+    payable = shipping_mod.stripe_payable_total_cents(total, shipping_cents)
+    app.logger.info(
+        "stripe_checkout_amounts subtotal_cents=%s shipping_cents=%s total_cents=%s method=%s country=%s rate_id=%s",
+        total,
+        shipping_cents,
+        payable,
+        quote.shipping_method,
+        country,
+        quote.rule_id,
+    )
+
+    allowed = [country] if country in shipping_mod.STRIPE_CHECKOUT_COUNTRIES else [c for c in _STRIPE_SHIPPING_COUNTRIES if c == country]
+    if not allowed:
+        flash("We cannot collect a delivery address for that country through checkout yet.", "error")
+        return redirect(url_for("checkout", country=country))
 
     base = _stripe_checkout_base_url()
     success_path = url_for("checkout_success", _external=False)
@@ -2575,12 +2791,19 @@ def _stripe_checkout_redirect_from_cart(*, notes: str, error_endpoint: str) -> A
             mode="payment",
             success_url=success_url,
             cancel_url=cancel_url,
-            shipping_address_collection={"allowed_countries": _STRIPE_SHIPPING_COUNTRIES},
+            shipping_address_collection={"allowed_countries": allowed},
             phone_number_collection={"enabled": True},
             metadata={
                 "checkout_mode": "cart",
                 "cart_lines": cart_lines,
-                "shipping_cents": str(default_shipping_cents),
+                "shipping_cents": str(shipping_cents),
+                "shipping_method": quote.shipping_method or method_code,
+                "shipping_method_name": quote.shipping_method_name or "",
+                "shipping_rate_id": str(quote.rule_id or ""),
+                "shipping_currency": quote.currency or shipping_mod.STORE_CURRENCY,
+                "shipping_zone": quote.shipping_zone or "",
+                "shipping_weight_grams": str(quote.estimated_weight_grams if quote.estimated_weight_grams is not None else ""),
+                "destination_country": country,
                 "affiliate_slug": affiliate_slug,
                 "guest_session_id": guest_session_id,
                 "customer_notes": notes_meta,
@@ -2610,13 +2833,24 @@ def _checkout_start_stripe_redirect() -> Any:
 
 @app.route("/checkout", methods=["GET", "POST"])
 def checkout():
-    try:
-        default_shipping_cents = max(0, int(os.environ.get("CHECKOUT_SHIPPING_CENTS_DEFAULT", "0") or 0))
-    except ValueError:
-        default_shipping_cents = 0
-
     with database.get_db() as conn:
         items, total = _cart_line_items(conn)
+        countries = shipping_mod.checkout_countries(conn)
+        selected_country = shipping_mod.normalize_country_code(
+            request.form.get("country") or request.args.get("country") or "NZ"
+        )
+        if selected_country is None:
+            selected_country = "NZ"
+        quotes, quote_error, missing_weight, _missing_ids = shipping_mod.list_quotes_for_destination(
+            conn, items, selected_country
+        )
+        selected_method = (request.form.get("shipping_method") or request.args.get("method") or "").strip()
+        if selected_method and not any(q.shipping_method == selected_method for q in quotes):
+            selected_method = ""
+        if not selected_method and quotes:
+            selected_method = quotes[0].shipping_method or ""
+        selected_quote = next((q for q in quotes if q.shipping_method == selected_method), None)
+        checkout_shipping_cents = int(selected_quote.price_cents) if selected_quote and selected_quote.ok else None
 
     affiliate_slug = request.cookies.get("licorice_affiliate_slug")
     affiliate_row = None
@@ -2632,6 +2866,12 @@ def checkout():
     if request.method == "GET" and stripe_back_from_payment:
         flash("You’re back on checkout — your basket is unchanged.", "info")
 
+    shipping_error = None
+    if items and not quotes:
+        shipping_error = shipping_mod.checkout_unavailable_message(
+            selected_country, quote_error
+        )
+
     payments_ready = bool(_stripe_secret_key())
     return render_template(
         "checkout.html",
@@ -2639,7 +2879,13 @@ def checkout():
         total=total,
         format_money=database.format_money,
         affiliate=affiliate_row,
-        checkout_shipping_cents=default_shipping_cents,
+        checkout_shipping_cents=checkout_shipping_cents,
+        checkout_countries=countries,
+        selected_country=selected_country,
+        shipping_quotes=quotes,
+        selected_method=selected_method,
+        shipping_error=shipping_error,
+        missing_weight=missing_weight,
         payments_ready=payments_ready,
         stripe_back_from_payment=stripe_back_from_payment,
     )
@@ -2747,6 +2993,15 @@ def admin_mark_affiliate_paid():
             return redirect(_url_admin_dashboard_preserve(search_q, sa_q))
         refresh_commission_snapshot(conn, affiliate_user_id, year, month)
         updated = database.mark_affiliate_commission_paid(conn, affiliate_user_id, year_month)
+        if updated:
+            database.insert_audit_log(
+                conn,
+                action="COMMISSION_MARKED_PAID",
+                entity_type="commission",
+                entity_id=affiliate_user_id,
+                user_id=int(current_user.id),
+                after={"year_month": year_month, "affiliate_user_id": affiliate_user_id},
+            )
     if updated:
         name = (aff["full_name"] or aff["affiliate_code"] or "Affiliate").strip()
         flash(f"Marked {name} as paid for {year_month}.", "ok")
@@ -3255,6 +3510,398 @@ def _url_admin_dashboard_preserve(q_orders: str, q_sa: str) -> str:
     return url_for("admin_dashboard")
 
 
+@app.route("/dashboard/admin/database-health")
+@login_required
+def admin_database_health():
+    if not _user_is_effective_admin():
+        return redirect(url_for("affiliate_dashboard"))
+    with database.get_db(commit=False) as conn:
+        report = database.database_health_report(conn)
+    return jsonify(report)
+
+
+def _admin_shipping_required():
+    if not _user_is_effective_admin():
+        return redirect(url_for("affiliate_dashboard"))
+    return None
+
+
+def _parse_dollars_to_cents(raw: str) -> Any:
+    """Admin forms collect dollars; storage is integer cents. Blank → None."""
+    text = (raw or "").strip().replace("$", "").replace(",", "")
+    if text == "":
+        return None
+    try:
+        return int(round(float(text) * 100))
+    except ValueError:
+        return text
+
+
+def _admin_rate_form_payload(form) -> Tuple[Dict[str, Any], List[str]]:
+    errors: List[str] = []
+    try:
+        method_id = int(form.get("shipping_method_id") or 0)
+    except (TypeError, ValueError):
+        method_id = 0
+    try:
+        zone_id = int(form.get("shipping_zone_id") or 0)
+    except (TypeError, ValueError):
+        zone_id = 0
+    if method_id < 1:
+        errors.append("Choose a shipping method.")
+    if zone_id < 1:
+        errors.append("Choose a shipping zone.")
+    price_cents = _parse_dollars_to_cents(form.get("price") or "0")
+    if price_cents is None:
+        price_cents = 0
+    min_order = _parse_dollars_to_cents(form.get("min_order_value") or "")
+    max_order = _parse_dollars_to_cents(form.get("max_order_value") or "")
+    parsed, field_errors = shipping_mod.validate_rate_fields(
+        price_cents=price_cents,
+        currency=form.get("currency") or shipping_mod.STORE_CURRENCY,
+        min_order_value_cents=min_order,
+        max_order_value_cents=max_order,
+        min_weight_grams=form.get("min_weight_grams"),
+        max_weight_grams=form.get("max_weight_grams"),
+        priority=form.get("priority") or 0,
+        estimated_min_days=form.get("estimated_min_days"),
+        estimated_max_days=form.get("estimated_max_days"),
+    )
+    errors.extend(field_errors)
+    active = 1 if (form.get("active") or "").strip() in ("1", "on", "true", "yes") else 0
+    parsed["shipping_method_id"] = method_id
+    parsed["shipping_zone_id"] = zone_id
+    parsed["active"] = active
+    return parsed, errors
+
+
+@app.route("/dashboard/admin/shipping")
+@login_required
+def admin_shipping():
+    denied = _admin_shipping_required()
+    if denied:
+        return denied
+    with database.get_db(commit=False) as conn:
+        rates = shipping_mod.list_admin_rates(conn)
+        methods = conn.execute(
+            "SELECT * FROM shipping_methods ORDER BY sort_order, id"
+        ).fetchall()
+        zones = conn.execute("SELECT * FROM shipping_zones ORDER BY name, id").fetchall()
+        missing_weights = shipping_mod.variants_missing_weight(conn)
+        packaging = shipping_mod.packaging_weight_grams(conn)
+        integrity = shipping_mod.shipping_integrity(conn)
+    return render_template(
+        "admin_shipping.html",
+        rates=rates,
+        methods=methods,
+        zones=zones,
+        missing_weights=missing_weights,
+        packaging_weight_grams=packaging,
+        integrity=integrity,
+        format_money=database.format_money,
+        format_shipping_price=shipping_mod.format_shipping_price,
+    )
+
+
+@app.route("/dashboard/admin/shipping/settings", methods=["POST"])
+@login_required
+def admin_shipping_settings():
+    denied = _admin_shipping_required()
+    if denied:
+        return denied
+    raw = (request.form.get("packaging_weight_grams") or "0").strip()
+    try:
+        grams = int(raw)
+    except ValueError:
+        flash("Packaging weight must be a whole number of grams.", "error")
+        return redirect(url_for("admin_shipping"))
+    if grams < 0:
+        flash("Packaging weight cannot be negative.", "error")
+        return redirect(url_for("admin_shipping"))
+    with database.get_db() as conn:
+        before = shipping_mod.packaging_weight_grams(conn)
+        shipping_mod.set_setting(conn, shipping_mod.SETTING_PACKAGING_WEIGHT, str(grams))
+        database.insert_audit_log(
+            conn,
+            action="SHIPPING_SETTINGS_UPDATED",
+            entity_type="shipping_settings",
+            user_id=int(current_user.id),
+            before={"packaging_weight_grams": before},
+            after={"packaging_weight_grams": grams},
+        )
+        database.insert_business_event(
+            conn,
+            event_type="SHIPPING_RATE_CHANGED",
+            entity_type="shipping_settings",
+            payload={"packaging_weight_grams": grams},
+        )
+    flash("Packaging weight saved.", "ok")
+    return redirect(url_for("admin_shipping"))
+
+
+@app.route("/dashboard/admin/shipping/rates/new", methods=["GET", "POST"])
+@login_required
+def admin_shipping_rate_new():
+    denied = _admin_shipping_required()
+    if denied:
+        return denied
+    with database.get_db() as conn:
+        methods = conn.execute(
+            "SELECT * FROM shipping_methods ORDER BY sort_order, id"
+        ).fetchall()
+        zones = conn.execute("SELECT * FROM shipping_zones ORDER BY name, id").fetchall()
+        if request.method == "POST":
+            parsed, errors = _admin_rate_form_payload(request.form)
+            if not errors:
+                conflicts = shipping_mod.rate_conflict_with_existing(
+                    conn,
+                    method_id=parsed["shipping_method_id"],
+                    zone_id=parsed["shipping_zone_id"],
+                    min_order=parsed["min_order_value_cents"],
+                    max_order=parsed["max_order_value_cents"],
+                    min_weight=parsed["min_weight_grams"],
+                    max_weight=parsed["max_weight_grams"],
+                    priority=parsed["priority"],
+                    active=parsed["active"],
+                )
+                if conflicts:
+                    errors.append(
+                        "This rule overlaps an existing active rate at the same priority. "
+                        "Change the range, deactivate the other rate, or raise priority."
+                    )
+            if errors:
+                for e in errors:
+                    flash(e, "error")
+                return render_template(
+                    "admin_shipping_rate_form.html",
+                    rate=None,
+                    methods=methods,
+                    zones=zones,
+                    form=request.form,
+                )
+            cur = conn.execute(
+                """
+                INSERT INTO shipping_rates (
+                    shipping_method_id, shipping_zone_id, price_cents, currency,
+                    min_order_value_cents, max_order_value_cents,
+                    min_weight_grams, max_weight_grams,
+                    active, priority, estimated_min_days, estimated_max_days,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                """,
+                (
+                    parsed["shipping_method_id"],
+                    parsed["shipping_zone_id"],
+                    parsed["price_cents"],
+                    parsed["currency"],
+                    parsed["min_order_value_cents"],
+                    parsed["max_order_value_cents"],
+                    parsed["min_weight_grams"],
+                    parsed["max_weight_grams"],
+                    parsed["active"],
+                    parsed["priority"],
+                    parsed["estimated_min_days"],
+                    parsed["estimated_max_days"],
+                ),
+            )
+            rid = int(cur.lastrowid)
+            database.insert_audit_log(
+                conn,
+                action="SHIPPING_RATE_CREATED",
+                entity_type="shipping_rate",
+                entity_id=rid,
+                user_id=int(current_user.id),
+                after=parsed,
+            )
+            database.insert_business_event(
+                conn,
+                event_type="SHIPPING_RATE_CHANGED",
+                entity_type="shipping_rate",
+                entity_id=rid,
+                payload={"action": "created", "price_cents": parsed["price_cents"]},
+            )
+            flash("Shipping rate created.", "ok")
+            return redirect(url_for("admin_shipping"))
+    return render_template(
+        "admin_shipping_rate_form.html",
+        rate=None,
+        methods=methods,
+        zones=zones,
+        form=None,
+    )
+
+
+@app.route("/dashboard/admin/shipping/rates/<int:rate_id>/edit", methods=["GET", "POST"])
+@login_required
+def admin_shipping_rate_edit(rate_id: int):
+    denied = _admin_shipping_required()
+    if denied:
+        return denied
+    with database.get_db() as conn:
+        rate = conn.execute("SELECT * FROM shipping_rates WHERE id = ?", (rate_id,)).fetchone()
+        if not rate:
+            flash("Shipping rate not found.", "error")
+            return redirect(url_for("admin_shipping"))
+        methods = conn.execute(
+            "SELECT * FROM shipping_methods ORDER BY sort_order, id"
+        ).fetchall()
+        zones = conn.execute("SELECT * FROM shipping_zones ORDER BY name, id").fetchall()
+        if request.method == "POST":
+            parsed, errors = _admin_rate_form_payload(request.form)
+            if not errors:
+                conflicts = shipping_mod.rate_conflict_with_existing(
+                    conn,
+                    method_id=parsed["shipping_method_id"],
+                    zone_id=parsed["shipping_zone_id"],
+                    min_order=parsed["min_order_value_cents"],
+                    max_order=parsed["max_order_value_cents"],
+                    min_weight=parsed["min_weight_grams"],
+                    max_weight=parsed["max_weight_grams"],
+                    priority=parsed["priority"],
+                    exclude_rate_id=rate_id,
+                    active=parsed["active"],
+                )
+                if conflicts:
+                    errors.append(
+                        "This rule overlaps an existing active rate at the same priority. "
+                        "Change the range, deactivate the other rate, or raise priority."
+                    )
+            if errors:
+                for e in errors:
+                    flash(e, "error")
+                return render_template(
+                    "admin_shipping_rate_form.html",
+                    rate=rate,
+                    methods=methods,
+                    zones=zones,
+                    form=request.form,
+                )
+            before = {k: rate[k] for k in rate.keys()}
+            conn.execute(
+                """
+                UPDATE shipping_rates SET
+                    shipping_method_id = ?,
+                    shipping_zone_id = ?,
+                    price_cents = ?,
+                    currency = ?,
+                    min_order_value_cents = ?,
+                    max_order_value_cents = ?,
+                    min_weight_grams = ?,
+                    max_weight_grams = ?,
+                    active = ?,
+                    priority = ?,
+                    estimated_min_days = ?,
+                    estimated_max_days = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (
+                    parsed["shipping_method_id"],
+                    parsed["shipping_zone_id"],
+                    parsed["price_cents"],
+                    parsed["currency"],
+                    parsed["min_order_value_cents"],
+                    parsed["max_order_value_cents"],
+                    parsed["min_weight_grams"],
+                    parsed["max_weight_grams"],
+                    parsed["active"],
+                    parsed["priority"],
+                    parsed["estimated_min_days"],
+                    parsed["estimated_max_days"],
+                    rate_id,
+                ),
+            )
+            action = "SHIPPING_RATE_UPDATED"
+            if int(before.get("active") or 0) != int(parsed["active"]):
+                action = (
+                    "SHIPPING_RATE_ACTIVATED" if parsed["active"] == 1 else "SHIPPING_RATE_DEACTIVATED"
+                )
+            database.insert_audit_log(
+                conn,
+                action=action,
+                entity_type="shipping_rate",
+                entity_id=rate_id,
+                user_id=int(current_user.id),
+                before=before,
+                after=parsed,
+            )
+            database.insert_business_event(
+                conn,
+                event_type="SHIPPING_RATE_CHANGED",
+                entity_type="shipping_rate",
+                entity_id=rate_id,
+                payload={"action": action, "price_cents": parsed["price_cents"]},
+            )
+            flash("Shipping rate saved.", "ok")
+            return redirect(url_for("admin_shipping"))
+    return render_template(
+        "admin_shipping_rate_form.html",
+        rate=rate,
+        methods=methods,
+        zones=zones,
+        form=None,
+    )
+
+
+@app.route("/dashboard/admin/shipping/rates/<int:rate_id>/toggle", methods=["POST"])
+@login_required
+def admin_shipping_rate_toggle(rate_id: int):
+    denied = _admin_shipping_required()
+    if denied:
+        return denied
+    with database.get_db() as conn:
+        rate = conn.execute("SELECT * FROM shipping_rates WHERE id = ?", (rate_id,)).fetchone()
+        if not rate:
+            flash("Shipping rate not found.", "error")
+            return redirect(url_for("admin_shipping"))
+        new_active = 0 if int(rate["active"] or 0) == 1 else 1
+        if new_active == 1:
+            conflicts = shipping_mod.rate_conflict_with_existing(
+                conn,
+                method_id=int(rate["shipping_method_id"]),
+                zone_id=int(rate["shipping_zone_id"]),
+                min_order=rate["min_order_value_cents"],
+                max_order=rate["max_order_value_cents"],
+                min_weight=rate["min_weight_grams"],
+                max_weight=rate["max_weight_grams"],
+                priority=int(rate["priority"] or 0),
+                exclude_rate_id=rate_id,
+                active=1,
+            )
+            if conflicts:
+                flash(
+                    "Cannot activate this rate because it overlaps another active rate at the same priority.",
+                    "error",
+                )
+                return redirect(url_for("admin_shipping"))
+        before = {k: rate[k] for k in rate.keys()}
+        conn.execute(
+            "UPDATE shipping_rates SET active = ?, updated_at = datetime('now') WHERE id = ?",
+            (new_active, rate_id),
+        )
+        action = "SHIPPING_RATE_ACTIVATED" if new_active == 1 else "SHIPPING_RATE_DEACTIVATED"
+        after = dict(before)
+        after["active"] = new_active
+        database.insert_audit_log(
+            conn,
+            action=action,
+            entity_type="shipping_rate",
+            entity_id=rate_id,
+            user_id=int(current_user.id),
+            before=before,
+            after=after,
+        )
+        database.insert_business_event(
+            conn,
+            event_type="SHIPPING_RATE_CHANGED",
+            entity_type="shipping_rate",
+            entity_id=rate_id,
+            payload={"action": action},
+        )
+    flash("Shipping rate updated.", "ok")
+    return redirect(url_for("admin_shipping"))
+
+
 @app.route("/dashboard/admin")
 @login_required
 def admin_dashboard():
@@ -3354,11 +4001,22 @@ def admin_order_fulfillment(order_id: int):
     redirect_order_number: Optional[str] = None
     with database.get_db() as conn:
         row = conn.execute(
-            "SELECT id, fulfillment_status, customer_email, order_number FROM orders WHERE id = ?",
+            "SELECT id, status, fulfillment_status, customer_email, order_number FROM orders WHERE id = ?",
             (order_id,),
         ).fetchone()
         if not row:
             flash("Order not found.", "error")
+            return redirect(url_for("admin_dashboard", q=search_q) if search_q else url_for("admin_dashboard"))
+        try:
+            commerce_state.assert_order_fulfillment_transition(
+                str(row["status"] or ""),
+                str(row["fulfillment_status"] or "") if "fulfillment_status" in row.keys() else None,
+                fulfill=fulfilled,
+            )
+        except commerce_state.InvalidStatusTransition:
+            flash("That fulfillment change is not allowed for this order.", "error")
+            if return_to == "detail":
+                return redirect(url_for("admin_order_detail", order_id=order_id))
             return redirect(url_for("admin_dashboard", q=search_q) if search_q else url_for("admin_dashboard"))
         was_fulfilled = (row["fulfillment_status"] or "").strip().lower() == "shipped"
         if fulfilled:
@@ -3369,6 +4027,22 @@ def admin_order_fulfillment(order_id: int):
                 """,
                 (order_id,),
             )
+            database.upsert_shipment_for_order(conn, order_id, status="shipped")
+            database.insert_audit_log(
+                conn,
+                action="ORDER_STATUS_CHANGED",
+                entity_type="order",
+                entity_id=order_id,
+                user_id=int(current_user.id),
+                before={"fulfillment_status": row["fulfillment_status"]},
+                after={"fulfillment_status": "shipped"},
+            )
+            database.insert_business_event(
+                conn,
+                event_type="ORDER_FULFILLED",
+                entity_type="order",
+                entity_id=order_id,
+            )
         else:
             conn.execute(
                 """
@@ -3376,6 +4050,16 @@ def admin_order_fulfillment(order_id: int):
                 WHERE id = ?
                 """,
                 (order_id,),
+            )
+            database.upsert_shipment_for_order(conn, order_id, status="pending")
+            database.insert_audit_log(
+                conn,
+                action="ORDER_STATUS_CHANGED",
+                entity_type="order",
+                entity_id=order_id,
+                user_id=int(current_user.id),
+                before={"fulfillment_status": row["fulfillment_status"]},
+                after={"fulfillment_status": "paid"},
             )
         if fulfilled and not was_fulfilled:
             ok_ff = send_order_fulfilled_notification(
@@ -3484,6 +4168,26 @@ def _admin_order_detail_response(order_id: int):
                 "UPDATE orders SET shipping_tracking = ? WHERE id = ?",
                 (tracking, order_id),
             )
+            ship = conn.execute(
+                "SELECT status FROM shipments WHERE order_id = ? ORDER BY id LIMIT 1",
+                (order_id,),
+            ).fetchone()
+            cur_ship = (ship["status"] if ship else "") or ""
+            if cur_ship in ("shipped", "delivered"):
+                ship_status = cur_ship
+            else:
+                ship_status = "ready" if tracking else "pending"
+            database.upsert_shipment_for_order(
+                conn, order_id, status=ship_status, tracking_number=tracking
+            )
+            database.insert_audit_log(
+                conn,
+                action="SHIPMENT_TRACKING_UPDATED",
+                entity_type="order",
+                entity_id=order_id,
+                user_id=int(current_user.id),
+                after={"tracking_number": tracking, "shipment_status": ship_status},
+            )
             flash("Tracking saved.", "ok")
             rnum = conn.execute("SELECT order_number FROM orders WHERE id = ?", (order_id,)).fetchone()
             if rnum and rnum["order_number"]:
@@ -3577,23 +4281,27 @@ def api_analytics_session_start():
     fpt = ip_fingerprint(ip)
     ua = request.headers.get("User-Agent", "") or ""
     dev = device_class_from_user_agent(ua)
-    with database.get_db() as conn:
-        if client_sid and database.analytics_session_exists(conn, client_sid):
-            database.analytics_session_touch(conn, client_sid, now)
-            if aff:
-                conn.execute(
-                    """
-                    UPDATE analytics_sessions SET affiliate_code = COALESCE(affiliate_code, ?)
-                    WHERE session_id = ?
-                    """,
-                    (aff, client_sid),
-                )
-            return jsonify({"session_id": client_sid, "country": country, "city": city})
-        sid = client_sid or str(uuid.uuid4())
-        database.analytics_create_session(
-            conn, sid, country or "", city or "", fpt, dev, ua, aff, now
-        )
-    return jsonify({"session_id": sid, "country": country, "city": city})
+    try:
+        with database.get_db() as conn:
+            if client_sid and database.analytics_session_exists(conn, client_sid):
+                database.analytics_session_touch(conn, client_sid, now)
+                if aff:
+                    conn.execute(
+                        """
+                        UPDATE analytics_sessions SET affiliate_code = COALESCE(affiliate_code, ?)
+                        WHERE session_id = ?
+                        """,
+                        (aff, client_sid),
+                    )
+                return jsonify({"session_id": client_sid, "country": country, "city": city})
+            sid = client_sid or str(uuid.uuid4())
+            database.analytics_create_session(
+                conn, sid, country or "", city or "", fpt, dev, ua, aff, now
+            )
+        return jsonify({"session_id": sid, "country": country, "city": city})
+    except Exception:
+        app.logger.exception("analytics_session_start_failed operation=analytics_start")
+        return jsonify({"session_id": client_sid or str(uuid.uuid4()), "country": country, "city": city})
 
 
 @app.route("/api/analytics/track", methods=["POST"])
@@ -3612,11 +4320,15 @@ def api_analytics_track():
         meta_json = json.dumps(meta, separators=(",", ":"), ensure_ascii=False)[:8192]
     except (TypeError, ValueError):
         meta_json = "{}"
-    with database.get_db() as conn:
-        if not database.analytics_session_exists(conn, sid):
-            return jsonify({"ok": False, "error": "unknown_session"}), 400
-        database.analytics_insert_event(conn, sid, event, page, meta_json, now)
-    return jsonify({"ok": True})
+    try:
+        with database.get_db() as conn:
+            if not database.analytics_session_exists(conn, sid):
+                return jsonify({"ok": False, "error": "unknown_session"}), 400
+            database.analytics_insert_event(conn, sid, event, page, meta_json, now)
+        return jsonify({"ok": True})
+    except Exception:
+        app.logger.exception("analytics_track_failed operation=analytics_track")
+        return jsonify({"ok": True, "dropped": True})
 
 
 @app.route("/api/analytics/convert", methods=["POST"])
@@ -3626,9 +4338,12 @@ def api_analytics_convert():
     now = _now_utc().isoformat()
     if not sid:
         return jsonify({"ok": False}), 400
-    with database.get_db() as conn:
-        if database.analytics_session_exists(conn, sid):
-            database.analytics_mark_converted(conn, sid, now)
+    try:
+        with database.get_db() as conn:
+            if database.analytics_session_exists(conn, sid):
+                database.analytics_mark_converted(conn, sid, now)
+    except Exception:
+        app.logger.exception("analytics_convert_failed operation=analytics_convert")
     return jsonify({"ok": True})
 
 

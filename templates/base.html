@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -89,6 +90,7 @@
       <div class="slide-menu-auth" aria-label="Listening Room account">
         {% if user_is_effective_admin() %}
           <a class="slide-menu-link" href="{{ url_for('admin_dashboard') }}">Admin</a>
+          <a class="slide-menu-link" href="{{ url_for('admin_shipping') }}">Shipping pricing</a>
           <a class="slide-menu-link slide-menu-link--subtle" href="{{ url_for('logout') }}">Log out</a>
         {% else %}
           <a class="slide-menu-link" href="{{ url_for('affiliate_dashboard') }}">Your Listening Room</a>

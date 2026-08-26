@@ -2296,7 +2296,9 @@ form[action*="/cart/add"] .btn.primary {
 
 .form-stack input,
 .form-stack textarea,
-.form-grid input {
+.form-stack select,
+.form-grid input,
+.form-grid select {
   padding: 0.5rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--hairline);
@@ -6017,7 +6019,7 @@ form[action*="/cart/add"] .btn.primary:hover {
   [data-ll-reveal] {
     opacity: 1;
     transform: none;
-    transition: none;
+    transition: none !important;
   }
 
   .btn:hover:not(.primary),
@@ -6028,4 +6030,25 @@ form[action*="/cart/add"] .btn.primary:hover {
     filter: none;
   }
 }
+
+.checkout-shipping-methods {
+  border: 0;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.checkout-shipping-option {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.checkout-destination-form {
+  max-width: 24rem;
+  margin: 1rem 0;
+}
+
 

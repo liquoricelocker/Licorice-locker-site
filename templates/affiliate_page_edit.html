@@ -10,6 +10,7 @@
 <section class="panel {% if not current_user.terms_accepted %}affiliate-page-locked{% endif %}">
   <h2>Profile &amp; landing page</h2>
   <form method="post" class="form-stack" enctype="multipart/form-data">
+    {% include "_csrf.html" %}
     <input type="hidden" name="action" value="update">
     <fieldset class="affiliate-edit-fieldset" {% if not current_user.terms_accepted %}disabled aria-disabled="true"{% endif %}>
       <div class="affiliate-display-photo-block">

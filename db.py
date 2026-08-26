@@ -3,31 +3,61 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
 import sqlite3
 import unicodedata
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from werkzeug.security import generate_password_hash
 
+from database_config import (
+    CORE_TABLES,
+    ProductionDatabaseError,
+    assert_production_path_on_volume,
+    detect_environment,
+    expected_volume_root,
+    get_database_path,
+    is_production,
+    is_test,
+    log_database_config,
+)
+
+# Re-export for app.py and tests
+__all__ = []  # keep module-style access: database.get_database_path
+
 
 def _resolved_db_path() -> Path:
-    """Resolve SQLite file path.
-
-    Set ``DATABASE_PATH`` on production (e.g. Railway volume: ``/data/app.db``).
-    If unset, uses ``<project>/data/licorice.db`` (created on first connect).
-    """
-    raw = (os.environ.get("DATABASE_PATH") or "").strip()
-    if raw:
-        return Path(raw).expanduser()
-    return Path(__file__).resolve().parent / "data" / "licorice.db"
+    """Deprecated alias — use get_database_path()."""
+    return get_database_path()
 
 
-DB_PATH = _resolved_db_path()
+class _DatabasePathProxy:
+    """Lazy path so dotenv can load before first use. Do not cache at import time."""
+
+    def __str__(self) -> str:
+        return str(get_database_path())
+
+    def __fspath__(self) -> str:
+        return str(get_database_path())
+
+    def is_file(self) -> bool:
+        return get_database_path().is_file()
+
+    def exists(self) -> bool:
+        return get_database_path().exists()
+
+    @property
+    def parent(self) -> Path:
+        return get_database_path().parent
+
+
+DB_PATH = _DatabasePathProxy()
 
 
 class PersistVerificationError(Exception):
@@ -220,31 +250,66 @@ def _migrate_normalize_user_emails(db: sqlite3.Connection) -> None:
 
 
 def get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    path = get_database_path()
+    if is_production():
+        if not path.is_file():
+            raise ProductionDatabaseError(
+                "CRITICAL DATABASE SAFETY ERROR\n"
+                f"Production database was not found at the configured persistent path:\n  {path}\n"
+                "Refusing to create a new production database.\n"
+                "Check DATABASE_PATH and Railway Volume configuration."
+            )
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
-    # Enforced on every connection (init_db PRAGMA only applied to that one connection).
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.OperationalError:
+        logging.getLogger("licorice.database").warning("Could not enable WAL journal mode")
+    try:
+        conn.execute("PRAGMA synchronous = NORMAL")
+    except sqlite3.OperationalError:
+        pass
     return conn
 
 
 @contextmanager
-def get_db() -> Generator[sqlite3.Connection, None, None]:
+def get_db(*, immediate: bool = False, commit: bool = True) -> Generator[sqlite3.Connection, None, None]:
+    """One connection strategy: open, optional IMMEDIATE lock, commit or rollback, always close."""
     conn = get_connection()
     try:
+        if immediate:
+            conn.execute("BEGIN IMMEDIATE")
         yield conn
-        conn.commit()
-    except Exception:
+        if commit:
+            conn.commit()
+        else:
+            conn.rollback()
+    except Exception as exc:
         conn.rollback()
+        skip_log = (sqlite3.IntegrityError, ValueError, ProductionDatabaseError)
+        try:
+            from inventory import InventoryError
+
+            skip_log = skip_log + (InventoryError,)
+        except Exception:
+            pass
+        if not isinstance(exc, skip_log):
+            logging.getLogger("licorice.database").exception(
+                "database_transaction_failed operation=get_db error_type=%s",
+                type(exc).__name__,
+            )
         raise
     finally:
         conn.close()
 
 
-def init_db() -> None:
-    """Create tables and run migrations if missing. Never drops data or overwrites existing rows."""
-    with get_db() as db:
-        db.executescript(
+def apply_baseline_schema(db: sqlite3.Connection) -> None:
+    """Create original tables and additive columns. Never overwrites catalogue rows."""
+    db.executescript(
             """
             PRAGMA foreign_keys = ON;
 
@@ -348,38 +413,185 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_product_tags_tag ON product_tags(tag);
             """
         )
-        _migrate_product_columns(db)
-        _migrate_user_columns(db)
-        _migrate_product_enhanced(db)
-        _ensure_core_products(db)
-        _ensure_product_specs(db)
-        _backfill_product_enhanced(db)
-        _ensure_product_images_tags(db)
-        _backfill_sound_wave_marketing(db)
-        _backfill_allegra_marketing(db)
-        _backfill_harmony_marketing(db)
-        _backfill_melody_marketing(db)
-        _backfill_riff_marketing(db)
-        _migrate_order_columns(db)
-        _backfill_order_columns(db)
-        _migrate_order_affiliate_commission(db)
-        _migrate_affiliate_profile_columns(db)
-        _migrate_terms_accepted(db)
-        _backfill_affiliate_profile(db)
-        _migrate_creative_assets(db)
-        _migrate_commissions_bonus(db)
-        _migrate_analytics_tables(db)
-        _migrate_analytics_geo_columns(db)
-        _migrate_orders_geo_columns(db)
-        _migrate_affiliate_deletion_log(db)
-        _migrate_affiliate_invite_tokens(db)
-        _migrate_normalize_user_emails(db)
-        # Align legacy16-sale target with top milestone (25)
-        db.execute(
-            "UPDATE affiliate_pages SET monthly_sales_target = 25 WHERE IFNULL(monthly_sales_target, 0) = 16"
+    _migrate_product_columns(db)
+    _migrate_user_columns(db)
+    _migrate_product_enhanced(db)
+    _backfill_product_enhanced(db)
+    _ensure_product_specs(db)
+    _migrate_order_columns(db)
+    _backfill_order_columns(db)
+    _migrate_order_affiliate_commission(db)
+    _migrate_affiliate_profile_columns(db)
+    _migrate_terms_accepted(db)
+    _backfill_affiliate_profile(db)
+    _migrate_creative_assets(db)
+    _migrate_commissions_bonus(db)
+    _migrate_analytics_tables(db)
+    _migrate_analytics_geo_columns(db)
+    _migrate_orders_geo_columns(db)
+    _migrate_affiliate_deletion_log(db)
+    _migrate_affiliate_invite_tokens(db)
+    _migrate_normalize_user_emails(db)
+    db.execute(
+        "UPDATE affiliate_pages SET monthly_sales_target = 25 WHERE IFNULL(monthly_sales_target, 0) = 16"
+    )
+    _migrate_brand_spelling(db)
+
+
+def _backup_database_file(path: Path) -> Optional[Path]:
+    if not path.is_file():
+        return None
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    dest = path.parent / f"licorice-pre-migration-{stamp}.db"
+    src = sqlite3.connect(str(path))
+    try:
+        dst = sqlite3.connect(str(dest))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    logging.getLogger("licorice.database").info("Wrote pre-migration backup %s", dest)
+    return dest
+
+
+def restore_sqlite_backup(*, backup_path: Path, destination: Path) -> None:
+    """Copy a SQLite backup into destination using the backup API. Never overwrites production live path."""
+    src_path = Path(backup_path)
+    dest_path = Path(destination)
+    if not src_path.is_file():
+        raise FileNotFoundError("backup_not_found")
+    if is_production() and dest_path.resolve() == get_database_path().resolve():
+        raise ProductionDatabaseError(
+            "Refusing to restore over the live production database from application code."
         )
-        _migrate_brand_spelling(db)
-        _sync_product_catalog_prices(db)
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    src = sqlite3.connect(str(src_path))
+    try:
+        dst = sqlite3.connect(str(dest_path))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
+def _production_core_tables_ok(db: sqlite3.Connection) -> List[str]:
+    missing = []
+    for name in CORE_TABLES:
+        row = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
+            (name,),
+        ).fetchone()
+        if not row:
+            missing.append(name)
+    return missing
+
+
+def _assert_production_database_healthy(db: sqlite3.Connection, path: Path) -> None:
+    missing = _production_core_tables_ok(db)
+    if missing:
+        raise ProductionDatabaseError(
+            "CRITICAL DATABASE SAFETY ERROR\n"
+            f"Production database at {path} is missing core tables: {', '.join(missing)}\n"
+            "Refusing to create a replacement database."
+        )
+    products = int(db.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"])
+    users = int(db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"])
+    orders = int(db.execute("SELECT COUNT(*) AS c FROM orders").fetchone()["c"])
+    if products == 0 and users == 0 and orders == 0:
+        raise ProductionDatabaseError(
+            "CRITICAL DATABASE SAFETY ERROR\n"
+            f"Production database at {path} exists but is unexpectedly empty "
+            "(no products, users, or orders).\n"
+            "Refusing to treat this as a valid production database."
+        )
+
+
+def bootstrap() -> None:
+    """Resolve path, refuse unsafe production states, migrate, never overwrite catalogue."""
+    env = detect_environment()
+    path = get_database_path()
+    existed = path.is_file()
+    log_database_config(exists=existed, created_new=False)
+
+    if env == "production":
+        assert_production_path_on_volume(path)
+        if not existed:
+            raise ProductionDatabaseError(
+                "CRITICAL DATABASE SAFETY ERROR\n"
+                f"Production database was not found at the configured persistent path:\n  {path}\n"
+                "Refusing to create a new production database.\n"
+                "Check DATABASE_PATH and Railway Volume configuration."
+            )
+        if path.stat().st_size < 100:
+            raise ProductionDatabaseError(
+                "CRITICAL DATABASE SAFETY ERROR\n"
+                f"Production database at {path} is too small to be a real store database.\n"
+                "Refusing to start."
+            )
+
+    from migrations.runner import has_pending_migrations_readonly, run_migrations
+
+    if existed and has_pending_migrations_readonly(path):
+        _backup_database_file(path)
+
+    with get_db() as db:
+        if env == "production":
+            _assert_production_database_healthy(db, path)
+        applied = run_migrations(db)
+        if applied:
+            logging.getLogger("licorice.database").info("Migrations applied: %s", ", ".join(applied))
+        if env != "production":
+            seed_development_if_empty(db)
+            from shipping import seed_development_rates_if_empty
+
+            seed_development_rates_if_empty(db)
+        _warn_inventory_enforce_unpopulated(db)
+
+
+def init_db() -> None:
+    """Back-compat entry: run bootstrap (schema migrations only; no catalogue overwrite)."""
+    bootstrap()
+
+
+def _unmanaged_sellable_sku_count(db: sqlite3.Connection) -> int:
+    try:
+        row = db.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM product_variants v
+            INNER JOIN products p ON p.id = v.product_id
+            LEFT JOIN inventory_items i ON i.variant_id = v.id
+            WHERE COALESCE(p.add_to_cart_enabled, 1) = 1
+              AND v.deleted_at IS NULL
+              AND COALESCE(i.quantity_on_hand, 0) = 0
+              AND COALESCE(i.quantity_reserved, 0) = 0
+              AND NOT EXISTS (
+                    SELECT 1 FROM inventory_movements m
+                    WHERE i.id IS NOT NULL AND m.inventory_item_id = i.id
+              )
+            """
+        ).fetchone()
+        return int(row["c"] if row else 0)
+    except sqlite3.Error:
+        return -1
+
+
+def _warn_inventory_enforce_unpopulated(db: sqlite3.Connection) -> None:
+    from inventory import inventory_enforced
+
+    if not inventory_enforced():
+        return
+    n = _unmanaged_sellable_sku_count(db)
+    logging.getLogger("licorice.database").warning(
+        "INVENTORY_ENFORCE is ENABLED. Unmanaged/zero-stock sellable SKUs=%s. "
+        "Enabling enforcement before loading inventory can block checkout. "
+        "This process will not invent stock.",
+        n,
+    )
 
 
 def _migrate_creative_assets(db: sqlite3.Connection) -> None:
@@ -528,15 +740,11 @@ def _migrate_brand_spelling(db: sqlite3.Connection) -> None:
 
 
 def _sync_product_catalog_prices(db: sqlite3.Connection) -> None:
-    """List prices in NZD (cents). Idempotent UPDATEs so existing DBs match the storefront."""
-    for cents, slug in (
-        (42900, "sound-wave"),
-        (9999, "riff"),
-        (9999, "allegro"),
-        (9999, "harmony"),
-        (9999, "melody"),
-    ):
-        db.execute("UPDATE products SET price_cents = ? WHERE slug = ?", (cents, slug))
+    """Intentionally disabled. Catalogue prices are owned by SQLite, not Python constants."""
+    raise RuntimeError(
+        "Refusing to overwrite product prices from Python constants. "
+        "The database is the source of truth."
+    )
 
 
 def _migrate_order_affiliate_commission(db: sqlite3.Connection) -> None:
@@ -895,13 +1103,10 @@ def _ensure_core_products(db: sqlite3.Connection) -> None:
 
 
 def _backfill_product_enhanced(db: sqlite3.Connection) -> None:
-    """SKU, cm dimensions, capacity count, featured, collection; unique index on sku."""
-    db.execute(
-        """
-        UPDATE products SET featured = 1
-        WHERE is_main = 1 AND (featured IS NULL OR featured = 0)
-        """
-    )
+    """SKU, cm dimensions, capacity count, collection; unique index on sku.
+
+    Fills NULL/empty fields only. Does not re-apply featured flags or prices.
+    """
     db.execute(
         "UPDATE products SET created_at = datetime('now') WHERE created_at IS NULL OR trim(created_at) = ''"
     )
@@ -1182,54 +1387,74 @@ def _ensure_product_specs(db: sqlite3.Connection) -> None:
         )
 
 
+def seed_development_if_empty(db: sqlite3.Connection) -> None:
+    """Insert catalogue only when the database has no products. Never runs in production."""
+    if is_production():
+        return
+    n = int(db.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"])
+    if n > 0:
+        return
+    logging.getLogger("licorice.database").info("Seeding empty development catalogue")
+    _ensure_core_products(db)
+    _backfill_product_enhanced(db)
+    _ensure_product_specs(db)
+    _ensure_product_images_tags(db)
+    _apply_initial_marketing_copy(db)
+    ensure_default_variants(db)
+    _ensure_inventory_rows_for_variants(db)
+
+
 def seed_if_empty() -> None:
+    """Back-compat. Production is a no-op. Development seeds only if users and products are empty."""
+    if is_production():
+        logging.getLogger("licorice.database").warning("seed_if_empty refused: production")
+        return
     with get_db() as db:
-        n = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
-        if n > 0:
+        users = int(db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"])
+        seed_development_if_empty(db)
+        if users > 0:
             return
+        _seed_dev_affiliate(db)
 
-        _method = "pbkdf2:sha256"
-        aff_hash = generate_password_hash(os.environ.get("AFFILIATE_PASSWORD", "affiliate123"), method=_method)
 
-        db.execute(
-            """
-            INSERT INTO users (email, password_hash, role, affiliate_slug, full_name)
-            VALUES (?, ?, 'affiliate', 'sound-partner', 'Jordan Keys')
-            """,
-            ("partner@licoricelocker.local", aff_hash),
-        )
-        aff_id = db.execute("SELECT id FROM users WHERE email = ?", ("partner@licoricelocker.local",)).fetchone()[
-            "id"
-        ]
-        db.execute(
-            """
-            INSERT INTO affiliate_pages (user_id, headline, tagline, description, monthly_sales_target)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                aff_id,
-                "Sound that travels with you",
-                "Liquorice Locker — curated audio gear",
-                "I only share gear I use. Every purchase supports independent sound design.",
-                25,
-            ),
-        )
+def _seed_dev_affiliate(db: sqlite3.Connection) -> None:
+    _method = "pbkdf2:sha256"
+    aff_hash = generate_password_hash(os.environ.get("AFFILIATE_PASSWORD", "affiliate123"), method=_method)
+    db.execute(
+        """
+        INSERT INTO users (email, password_hash, role, affiliate_slug, full_name)
+        VALUES (?, ?, 'affiliate', 'sound-partner', 'Jordan Keys')
+        """,
+        ("partner@licoricelocker.local", aff_hash),
+    )
+    aff_id = db.execute("SELECT id FROM users WHERE email = ?", ("partner@licoricelocker.local",)).fetchone()["id"]
+    db.execute(
+        """
+        INSERT INTO affiliate_pages (user_id, headline, tagline, description, monthly_sales_target)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            aff_id,
+            "Sound that travels with you",
+            "Liquorice Locker — curated audio gear",
+            "I only share gear I use. Every purchase supports independent sound design.",
+            25,
+        ),
+    )
+    _backfill_affiliate_profile(db)
 
-        _ensure_core_products(db)
-        _ensure_product_specs(db)
-        _backfill_product_enhanced(db)
-        _ensure_product_images_tags(db)
-        _backfill_sound_wave_marketing(db)
-        _backfill_allegra_marketing(db)
-        _backfill_harmony_marketing(db)
-        _backfill_melody_marketing(db)
-        _backfill_riff_marketing(db)
-        _migrate_order_columns(db)
-        _backfill_order_columns(db)
-        _migrate_order_affiliate_commission(db)
-        _migrate_affiliate_profile_columns(db)
-        _backfill_affiliate_profile(db)
-        _migrate_affiliate_deletion_log(db)
+
+def _apply_initial_marketing_copy(db: sqlite3.Connection) -> None:
+    """Full descriptions for a brand-new catalogue only (caller already verified empty products)."""
+    mapping = {
+        "sound-wave": _SOUND_WAVE_DESCRIPTION,
+        "allegro": _ALLEGRA_DESCRIPTION,
+        "harmony": _HARMONY_DESCRIPTION,
+        "melody": _MELODY_DESCRIPTION,
+        "riff": _RIFF_DESCRIPTION,
+    }
+    for slug, desc in mapping.items():
+        db.execute("UPDATE products SET description = ? WHERE slug = ?", (desc, slug))
 
 
 def user_by_id(db: sqlite3.Connection, uid: int) -> Optional[sqlite3.Row]:
@@ -1888,5 +2113,810 @@ def mark_order_receipt_sent(db: sqlite3.Connection, order_id: int) -> None:
     )
 
 
+def attach_commerce_records_for_new_order(
+    db: sqlite3.Connection,
+    *,
+    order_id: int,
+    csid: str,
+    email: str,
+    first: str,
+    last: str,
+    phone: str,
+    total_cents: int,
+    payment_method: str,
+) -> None:
+    if int(total_cents) < 0:
+        raise ValueError("payment_amount_cannot_be_negative")
+    cid = get_or_create_customer(
+        db, email=email, first_name=first, last_name=last, phone=phone
+    )
+    db.execute("UPDATE orders SET customer_id = ? WHERE id = ?", (cid, order_id))
+    exists = db.execute(
+        "SELECT id, status FROM payments WHERE provider_session_id = ? LIMIT 1",
+        (csid,),
+    ).fetchone()
+    if exists:
+        from commerce_state import assert_payment_transition, InvalidStatusTransition
+
+        try:
+            assert_payment_transition(str(exists["status"] or ""), "succeeded")
+        except InvalidStatusTransition:
+            logging.getLogger("licorice.database").warning(
+                "payment_replay_blocked operation=payment entity=payment entity_id=%s error_type=InvalidStatusTransition",
+                exists["id"],
+            )
+    else:
+        db.execute(
+            """
+            INSERT INTO payments (
+                order_id, provider, provider_session_id, amount_cents, currency,
+                status, payment_method, paid_at
+            ) VALUES (?, 'stripe', ?, ?, 'NZD', 'succeeded', ?, datetime('now'))
+            """,
+            (order_id, csid, int(total_cents), payment_method),
+        )
+    insert_audit_log(
+        db,
+        action="ORDER_CREATED",
+        entity_type="order",
+        entity_id=order_id,
+        after={"order_id": order_id, "stripe_session": csid, "total_cents": total_cents},
+    )
+    insert_business_event(
+        db,
+        event_type="ORDER_CREATED",
+        entity_type="order",
+        entity_id=order_id,
+        payload={"stripe_session": csid, "total_cents": total_cents},
+    )
+    insert_business_event(
+        db,
+        event_type="PAYMENT_RECEIVED",
+        entity_type="order",
+        entity_id=order_id,
+        payload={"provider": "stripe", "amount_cents": total_cents},
+    )
+    rows = db.execute(
+        "SELECT variant_id, quantity FROM order_items WHERE order_id = ?",
+        (order_id,),
+    ).fetchall()
+    from inventory import apply_order_sale_if_managed
+
+    for row in rows:
+        apply_order_sale_if_managed(
+            db,
+            variant_id=int(row["variant_id"]) if row["variant_id"] is not None else None,
+            quantity=int(row["quantity"]),
+            order_id=order_id,
+        )
+
+
 def format_money(cents: int) -> str:
     return f"${cents / 100:.2f}"
+
+
+def ensure_default_variants(db: sqlite3.Connection) -> None:
+    db.execute(
+        """
+        INSERT INTO product_variants (
+            product_id, name, sku, status, price_cents, currency,
+            width_cm, height_cm, depth_cm, is_default
+        )
+        SELECT
+            p.id,
+            'Default',
+            p.sku,
+            'active',
+            p.price_cents,
+            'NZD',
+            p.width_cm,
+            p.height_cm,
+            p.depth_cm,
+            1
+        FROM products p
+        WHERE NOT EXISTS (
+            SELECT 1 FROM product_variants v WHERE v.product_id = p.id
+        )
+        """
+    )
+
+
+def _ensure_inventory_rows_for_variants(db: sqlite3.Connection) -> None:
+    loc = db.execute("SELECT id FROM inventory_locations ORDER BY id LIMIT 1").fetchone()
+    if not loc:
+        return
+    lid = int(loc["id"])
+    db.execute(
+        """
+        INSERT INTO inventory_items (variant_id, location_id, quantity_on_hand, quantity_reserved)
+        SELECT v.id, ?, 0, 0
+        FROM product_variants v
+        WHERE NOT EXISTS (
+            SELECT 1 FROM inventory_items i
+            WHERE i.variant_id = v.id AND i.location_id = ?
+        )
+        """,
+        (lid, lid),
+    )
+
+
+def default_variant_for_product(db: sqlite3.Connection, product_id: int) -> Optional[sqlite3.Row]:
+    return db.execute(
+        """
+        SELECT * FROM product_variants
+        WHERE product_id = ? AND deleted_at IS NULL
+        ORDER BY is_default DESC, id ASC
+        LIMIT 1
+        """,
+        (product_id,),
+    ).fetchone()
+
+
+def backfill_customers_from_orders(db: sqlite3.Connection) -> None:
+    rows = db.execute(
+        """
+        SELECT id, customer_email, customer_first, customer_last, customer_phone,
+               shipping_line1, shipping_line2, shipping_city, shipping_region,
+               shipping_postal, shipping_country, shipping_name
+        FROM orders
+        WHERE customer_id IS NULL
+        ORDER BY id
+        """
+    ).fetchall()
+    for r in rows:
+        email = (r["customer_email"] or "").strip()
+        norm = normalize_email(email)
+        if not norm:
+            continue
+        existing = db.execute(
+            "SELECT id FROM customers WHERE email_normalized = ?",
+            (norm,),
+        ).fetchone()
+        if existing:
+            cid = int(existing["id"])
+        else:
+            cur = db.execute(
+                """
+                INSERT INTO customers (
+                    email, email_normalized, first_name, last_name, phone
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    email,
+                    norm,
+                    (r["customer_first"] or "").strip(),
+                    (r["customer_last"] or "").strip(),
+                    (r["customer_phone"] or "").strip() if "customer_phone" in r.keys() else "",
+                ),
+            )
+            cid = int(cur.lastrowid)
+            line1 = (r["shipping_line1"] or "").strip()
+            if line1:
+                db.execute(
+                    """
+                    INSERT INTO customer_addresses (
+                        customer_id, type, first_name, last_name, address_line1, address_line2,
+                        city, region, postcode, country, is_default
+                    ) VALUES (?, 'shipping', ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    """,
+                    (
+                        cid,
+                        (r["customer_first"] or "").strip(),
+                        (r["customer_last"] or "").strip(),
+                        line1,
+                        (r["shipping_line2"] or "").strip(),
+                        (r["shipping_city"] or "").strip(),
+                        (r["shipping_region"] or "").strip(),
+                        (r["shipping_postal"] or "").strip(),
+                        (r["shipping_country"] or "").strip(),
+                    ),
+                )
+        db.execute("UPDATE orders SET customer_id = ? WHERE id = ?", (cid, int(r["id"])))
+
+
+def backfill_payments_from_orders(db: sqlite3.Connection) -> None:
+    rows = db.execute(
+        """
+        SELECT o.id, o.total_cents, o.payment_method, o.stripe_checkout_session_id, o.created_at
+        FROM orders o
+        WHERE NOT EXISTS (SELECT 1 FROM payments p WHERE p.order_id = o.id)
+        """
+    ).fetchall()
+    for r in rows:
+        session_id = (r["stripe_checkout_session_id"] or "").strip() or None
+        db.execute(
+            """
+            INSERT INTO payments (
+                order_id, provider, provider_session_id, amount_cents, currency,
+                status, payment_method, paid_at
+            ) VALUES (?, 'stripe', ?, ?, 'NZD', 'succeeded', ?, ?)
+            """,
+            (
+                int(r["id"]),
+                session_id,
+                int(r["total_cents"] or 0),
+                (r["payment_method"] or "").strip(),
+                r["created_at"],
+            ),
+        )
+
+
+def upsert_shipment_for_order(
+    db: sqlite3.Connection,
+    order_id: int,
+    *,
+    status: str,
+    tracking_number: Optional[str] = None,
+) -> None:
+    """Create or update the shipment row for an order. Does not insert a second shipment."""
+    allowed = {"pending", "ready", "shipped", "delivered", "cancelled"}
+    st = (status or "pending").strip().lower()
+    if st not in allowed:
+        raise ValueError("invalid_shipment_status")
+    row = db.execute(
+        "SELECT id, tracking_number, shipped_at FROM shipments WHERE order_id = ? ORDER BY id LIMIT 1",
+        (int(order_id),),
+    ).fetchone()
+    tracking = "" if tracking_number is None else str(tracking_number).strip()
+    if row is None:
+        db.execute(
+            """
+            INSERT INTO shipments (order_id, tracking_number, status, shipped_at, delivered_at)
+            VALUES (
+                ?, ?, ?,
+                CASE WHEN ? = 'shipped' THEN datetime('now') ELSE NULL END,
+                CASE WHEN ? = 'delivered' THEN datetime('now') ELSE NULL END
+            )
+            """,
+            (int(order_id), tracking, st, st, st),
+        )
+        return
+    keep_tracking = tracking if tracking_number is not None else (row["tracking_number"] or "")
+    shipped_at_sql = "datetime('now')" if st == "shipped" and not row["shipped_at"] else (
+        "shipped_at" if st in ("shipped", "delivered") else "NULL"
+    )
+    db.execute(
+        f"""
+        UPDATE shipments
+        SET tracking_number = ?,
+            status = ?,
+            shipped_at = {shipped_at_sql},
+            delivered_at = CASE WHEN ? = 'delivered' THEN COALESCE(delivered_at, datetime('now')) ELSE delivered_at END,
+            updated_at = datetime('now')
+        WHERE id = ?
+        """,
+        (keep_tracking, st, st, int(row["id"])),
+    )
+
+
+def backfill_shipments_from_orders(db: sqlite3.Connection) -> None:
+    rows = db.execute(
+        """
+        SELECT id, shipping_tracking, fulfillment_status, status
+        FROM orders
+        WHERE NOT EXISTS (SELECT 1 FROM shipments s WHERE s.order_id = orders.id)
+        """
+    ).fetchall()
+    for r in rows:
+        tracking = (r["shipping_tracking"] or "").strip()
+        ff = (r["fulfillment_status"] or r["status"] or "").strip().lower()
+        if not tracking and ff not in ("shipped", "delivered"):
+            continue
+        st = "shipped" if ff == "shipped" or tracking else "pending"
+        db.execute(
+            """
+            INSERT INTO shipments (order_id, tracking_number, status, shipped_at)
+            VALUES (?, ?, ?, CASE WHEN ? = 'shipped' THEN datetime('now') ELSE NULL END)
+            """,
+            (int(r["id"]), tracking, st, st),
+        )
+
+
+def insert_audit_log(
+    db: sqlite3.Connection,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: Optional[int] = None,
+    user_id: Optional[int] = None,
+    before: Any = None,
+    after: Any = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO audit_logs (user_id, action, entity_type, entity_id, before_json, after_json, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            action,
+            entity_type,
+            entity_id,
+            json.dumps(before) if before is not None else None,
+            json.dumps(after) if after is not None else None,
+            json.dumps(metadata) if metadata is not None else None,
+        ),
+    )
+
+
+def insert_business_event(
+    db: sqlite3.Connection,
+    *,
+    event_type: str,
+    entity_type: str,
+    entity_id: Optional[int] = None,
+    payload: Optional[Dict[str, Any]] = None,
+) -> None:
+    db.execute(
+        """
+        INSERT INTO business_events (type, entity_type, entity_id, payload_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        (event_type, entity_type, entity_id, json.dumps(payload or {})),
+    )
+
+
+def get_or_create_customer(
+    db: sqlite3.Connection,
+    *,
+    email: str,
+    first_name: str,
+    last_name: str,
+    phone: str = "",
+) -> int:
+    norm = normalize_email(email)
+    row = db.execute("SELECT id FROM customers WHERE email_normalized = ?", (norm,)).fetchone()
+    if row:
+        return int(row["id"])
+    cur = db.execute(
+        """
+        INSERT INTO customers (email, email_normalized, first_name, last_name, phone)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (email.strip(), norm, first_name.strip(), last_name.strip(), (phone or "").strip()),
+    )
+    return int(cur.lastrowid)
+
+
+def insert_order_item_with_snapshot(
+    db: sqlite3.Connection,
+    *,
+    order_id: int,
+    product: sqlite3.Row,
+    quantity: int,
+    unit_price_cents: int,
+    variant: Optional[sqlite3.Row] = None,
+) -> None:
+    if int(quantity) < 1:
+        raise ValueError("order_item_quantity_must_be_positive")
+    if int(unit_price_cents) < 0:
+        raise ValueError("order_item_unit_price_cannot_be_negative")
+    if variant is None:
+        variant = default_variant_for_product(db, int(product["id"]))
+    vid = int(variant["id"]) if variant else None
+    subtotal = int(quantity) * int(unit_price_cents)
+    db.execute(
+        """
+        INSERT INTO order_items (
+            order_id, product_id, quantity, unit_price_cents,
+            variant_id, product_name_snapshot, sku_snapshot,
+            discount_cents, tax_cents, line_subtotal_cents, line_total_cents
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+        """,
+        (
+            order_id,
+            int(product["id"]),
+            int(quantity),
+            int(unit_price_cents),
+            vid,
+            str(product["name"] or ""),
+            str(product["sku"] or "") if "sku" in product.keys() else "",
+            subtotal,
+            subtotal,
+        ),
+    )
+
+
+def fill_order_items_if_empty(
+    db: sqlite3.Connection,
+    order_id: int,
+    lines: List[Tuple[sqlite3.Row, int, int]],
+) -> bool:
+    """Insert snapshots only when the order has no items. Returns True if this call filled them.
+
+    Does not invent products or prices; callers must pass authoritative (product, qty, unit) lines.
+    """
+    n = int(
+        db.execute(
+            "SELECT COUNT(*) AS c FROM order_items WHERE order_id = ?",
+            (int(order_id),),
+        ).fetchone()["c"]
+    )
+    if n > 0:
+        return False
+    if not lines:
+        raise ValueError("incomplete_order_missing_authoritative_lines")
+    for product, qty, unit in lines:
+        insert_order_item_with_snapshot(
+            db,
+            order_id=int(order_id),
+            product=product,
+            quantity=int(qty),
+            unit_price_cents=int(unit),
+        )
+    return True
+
+
+def record_stripe_event_processed(
+    db: sqlite3.Connection, event_id: str, event_type: str = "", session_id: str = ""
+) -> bool:
+    """Return True if this Stripe event id is newly recorded; False if already seen."""
+    eid = (event_id or "").strip()
+    if not eid:
+        return True
+    try:
+        db.execute(
+            """
+            INSERT INTO stripe_processed_events (event_id, event_type, session_id)
+            VALUES (?, ?, ?)
+            """,
+            (eid, event_type or "", session_id or ""),
+        )
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def bom_cost_cents(db: sqlite3.Connection, bom_id: int) -> int:
+    """Sum of component qty × unit cost in integer cents (qty rounded after multiply)."""
+    rows = db.execute(
+        """
+        SELECT i.quantity, c.cost_cents
+        FROM bill_of_material_items i
+        INNER JOIN components c ON c.id = i.component_id
+        WHERE i.bom_id = ?
+        """,
+        (int(bom_id),),
+    ).fetchall()
+    total = 0
+    for r in rows:
+        qty = float(r["quantity"] or 0)
+        cost = int(r["cost_cents"] or 0)
+        if cost < 0:
+            continue
+        total += int(round(qty * cost))
+    return total
+
+
+def integrity_report(db: sqlite3.Connection) -> Dict[str, Any]:
+    """Read-only orphan / duplicate / invalid-value scan. Does not modify data."""
+
+    def _count(sql: str) -> int:
+        try:
+            return int(db.execute(sql).fetchone()[0])
+        except sqlite3.Error:
+            return -1
+
+    fk_violations = []
+    try:
+        for row in db.execute("PRAGMA foreign_key_check"):
+            fk_violations.append(
+                {"table": row[0], "rowid": row[1], "parent": row[2], "fkid": row[3]}
+            )
+    except sqlite3.Error:
+        pass
+
+    orphans = {
+        "order_items_without_order": _count(
+            "SELECT COUNT(*) FROM order_items oi LEFT JOIN orders o ON o.id = oi.order_id WHERE o.id IS NULL"
+        ),
+        "order_items_missing_product": _count(
+            "SELECT COUNT(*) FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id WHERE p.id IS NULL"
+        ),
+        "payments_without_order": _count(
+            "SELECT COUNT(*) FROM payments p LEFT JOIN orders o ON o.id = p.order_id WHERE o.id IS NULL"
+        ),
+        "shipments_without_order": _count(
+            "SELECT COUNT(*) FROM shipments s LEFT JOIN orders o ON o.id = s.order_id WHERE o.id IS NULL"
+        ),
+        "variants_without_product": _count(
+            "SELECT COUNT(*) FROM product_variants v LEFT JOIN products p ON p.id = v.product_id WHERE p.id IS NULL"
+        ),
+        "inventory_without_variant_or_component": _count(
+            """
+            SELECT COUNT(*) FROM inventory_items i
+            WHERE (i.variant_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.id = i.variant_id))
+               OR (i.component_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM components c WHERE c.id = i.component_id))
+            """
+        ),
+        "movements_without_item": _count(
+            "SELECT COUNT(*) FROM inventory_movements m LEFT JOIN inventory_items i ON i.id = m.inventory_item_id WHERE i.id IS NULL"
+        ),
+        "bom_items_without_bom": _count(
+            "SELECT COUNT(*) FROM bill_of_material_items i LEFT JOIN bills_of_materials b ON b.id = i.bom_id WHERE b.id IS NULL"
+        ),
+        "bom_items_without_component": _count(
+            "SELECT COUNT(*) FROM bill_of_material_items i LEFT JOIN components c ON c.id = i.component_id WHERE c.id IS NULL"
+        ),
+        "production_materials_without_order": _count(
+            "SELECT COUNT(*) FROM production_materials m LEFT JOIN production_orders p ON p.id = m.production_order_id WHERE p.id IS NULL"
+        ),
+        "commissions_without_affiliate": _count(
+            "SELECT COUNT(*) FROM commissions c LEFT JOIN users u ON u.id = c.affiliate_user_id WHERE u.id IS NULL"
+        ),
+        "orders_without_items": _count(
+            "SELECT COUNT(*) FROM orders o WHERE NOT EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id)"
+        ),
+        "shipping_rates_without_method": _count(
+            """
+            SELECT COUNT(*) FROM shipping_rates r
+            LEFT JOIN shipping_methods m ON m.id = r.shipping_method_id
+            WHERE m.id IS NULL
+            """
+        ),
+        "shipping_rates_without_zone": _count(
+            """
+            SELECT COUNT(*) FROM shipping_rates r
+            LEFT JOIN shipping_zones z ON z.id = r.shipping_zone_id
+            WHERE z.id IS NULL
+            """
+        ),
+    }
+    duplicates = {
+        "duplicate_product_slugs": _count(
+            "SELECT COUNT(*) FROM (SELECT slug FROM products GROUP BY slug HAVING COUNT(*) > 1)"
+        ),
+        "duplicate_order_numbers": _count(
+            "SELECT COUNT(*) FROM (SELECT order_number FROM orders GROUP BY order_number HAVING COUNT(*) > 1)"
+        ),
+        "duplicate_customer_emails": _count(
+            "SELECT COUNT(*) FROM (SELECT email_normalized FROM customers GROUP BY email_normalized HAVING COUNT(*) > 1)"
+        ),
+        "duplicate_stripe_sessions": _count(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT stripe_checkout_session_id FROM orders
+                WHERE stripe_checkout_session_id IS NOT NULL AND trim(stripe_checkout_session_id) != ''
+                GROUP BY stripe_checkout_session_id HAVING COUNT(*) > 1
+            )
+            """
+        ),
+        "duplicate_inventory_sales": _count(
+            """
+            SELECT COUNT(*) FROM (
+                SELECT inventory_item_id, reference_id FROM inventory_movements
+                WHERE movement_type = 'SALE' AND reference_type = 'order' AND reference_id IS NOT NULL
+                GROUP BY inventory_item_id, reference_id HAVING COUNT(*) > 1
+            )
+            """
+        ),
+    }
+    invalid_financial = {
+        "products_negative_price": _count("SELECT COUNT(*) FROM products WHERE price_cents < 0"),
+        "order_items_nonpositive_qty": _count("SELECT COUNT(*) FROM order_items WHERE quantity < 1"),
+        "order_items_negative_unit": _count("SELECT COUNT(*) FROM order_items WHERE unit_price_cents < 0"),
+        "orders_negative_total": _count("SELECT COUNT(*) FROM orders WHERE total_cents < 0"),
+        "payments_negative_amount": _count("SELECT COUNT(*) FROM payments WHERE amount_cents < 0"),
+        "commissions_negative": _count("SELECT COUNT(*) FROM commissions WHERE commission_cents < 0"),
+        "variants_negative_price": _count("SELECT COUNT(*) FROM product_variants WHERE price_cents < 0"),
+        "shipping_rates_negative_price": _count(
+            "SELECT COUNT(*) FROM shipping_rates WHERE price_cents < 0"
+        ),
+        "shipping_rates_invalid_currency": _count(
+            "SELECT COUNT(*) FROM shipping_rates WHERE UPPER(COALESCE(currency, '')) != 'NZD'"
+        ),
+        "shipping_rates_invalid_order_range": _count(
+            """
+            SELECT COUNT(*) FROM shipping_rates
+            WHERE min_order_value_cents IS NOT NULL
+              AND max_order_value_cents IS NOT NULL
+              AND max_order_value_cents < min_order_value_cents
+            """
+        ),
+        "shipping_rates_invalid_weight_range": _count(
+            """
+            SELECT COUNT(*) FROM shipping_rates
+            WHERE min_weight_grams IS NOT NULL
+              AND max_weight_grams IS NOT NULL
+              AND max_weight_grams < min_weight_grams
+            """
+        ),
+    }
+    invalid_statuses = {
+        "orders_unknown_status": _count(
+            """
+            SELECT COUNT(*) FROM orders
+            WHERE LOWER(COALESCE(status, '')) NOT IN (
+                '', 'completed', 'paid', 'shipped', 'delivered', 'cancelled', 'canceled', 'pending'
+            )
+            """
+        ),
+        "payments_unknown_status": _count(
+            """
+            SELECT COUNT(*) FROM payments
+            WHERE LOWER(COALESCE(status, '')) NOT IN ('pending', 'succeeded', 'failed', 'refunded')
+            """
+        ),
+        "shipped_cancelled_orders": _count(
+            """
+            SELECT COUNT(*) FROM orders
+            WHERE LOWER(COALESCE(status, '')) IN ('cancelled', 'canceled')
+              AND LOWER(COALESCE(fulfillment_status, '')) = 'shipped'
+            """
+        ),
+    }
+    shipping = {}
+    try:
+        from shipping import shipping_integrity
+
+        shipping = shipping_integrity(db)
+    except Exception:
+        shipping = {"available": False}
+
+    return {
+        "foreign_key_violations": fk_violations[:50],
+        "foreign_key_violation_count": len(fk_violations),
+        "orphans": orphans,
+        "duplicates": duplicates,
+        "invalid_financial": invalid_financial,
+        "invalid_statuses": invalid_statuses,
+        "shipping": shipping,
+    }
+
+
+def expected_tables() -> Tuple[str, ...]:
+    return CORE_TABLES + (
+        "product_variants",
+        "customers",
+        "payments",
+        "shipments",
+        "inventory_locations",
+        "inventory_items",
+        "inventory_movements",
+        "schema_migrations",
+        "audit_logs",
+        "business_events",
+        "stripe_processed_events",
+        "shipping_methods",
+        "shipping_zones",
+        "shipping_zone_countries",
+        "shipping_rates",
+        "shipping_settings",
+    )
+
+
+def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
+    from migrations.runner import MIGRATIONS, applied_versions, current_version
+
+    path = get_database_path()
+    exists = path.is_file()
+    size = path.stat().st_size if exists else 0
+    readable = writable = False
+    if exists:
+        readable = os.access(path, os.R_OK)
+        writable = os.access(path, os.W_OK)
+    journal = db.execute("PRAGMA journal_mode").fetchone()[0]
+    fk = db.execute("PRAGMA foreign_keys").fetchone()[0]
+    busy = db.execute("PRAGMA busy_timeout").fetchone()[0]
+    present = {
+        r[0]
+        for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    missing = [t for t in expected_tables() if t not in present]
+    counts: Dict[str, int] = {}
+    for table in (
+        "products",
+        "customers",
+        "orders",
+        "payments",
+        "users",
+        "commissions",
+        "inventory_items",
+        "order_items",
+        "product_variants",
+        "shipments",
+        "audit_logs",
+        "business_events",
+        "analytics_events",
+        "affiliates",
+        "shipping_rates",
+        "shipping_methods",
+        "shipping_zones",
+    ):
+        if table == "affiliates":
+            try:
+                counts["affiliates"] = int(
+                    db.execute("SELECT COUNT(*) AS c FROM users WHERE role = 'affiliate'").fetchone()["c"]
+                )
+            except sqlite3.Error:
+                counts["affiliates"] = -1
+            continue
+        try:
+            counts[table] = int(db.execute(f"SELECT COUNT(*) AS c FROM {table}").fetchone()["c"])
+        except sqlite3.Error:
+            counts[table] = -1
+    last_write = None
+    try:
+        row = db.execute("SELECT MAX(created_at) AS t FROM orders").fetchone()
+        last_write = row["t"] if row else None
+    except sqlite3.Error:
+        pass
+    applied = applied_versions(db)
+    integrity = integrity_report(db)
+    from inventory import inventory_enforced, ledger_discrepancies
+
+    enforce = inventory_enforced()
+    ledger = ledger_discrepancies(db)
+    try:
+        neg_qty = int(
+            db.execute(
+                """
+                SELECT COUNT(*) AS c FROM inventory_items
+                WHERE quantity_on_hand < 0 OR quantity_reserved < 0
+                """
+            ).fetchone()["c"]
+        )
+    except sqlite3.Error:
+        neg_qty = -1
+    volume_root = expected_volume_root()
+    inside_volume = None
+    if volume_root is not None:
+        try:
+            path.resolve().relative_to(volume_root)
+            inside_volume = True
+        except ValueError:
+            inside_volume = False
+    inventory_block = {
+        "enforcement": "ENABLED" if enforce else "DISABLED",
+        "records": counts.get("inventory_items", -1),
+        "negative_quantities": neg_qty,
+        "ledger_discrepancy_count": len(ledger),
+        "ledger_discrepancies": ledger,
+        "unmanaged_sellable_skus": _unmanaged_sellable_sku_count(db),
+    }
+    return {
+        "database": {
+            "path": str(path),
+            "exists": exists,
+            "size_bytes": size,
+        },
+        "persistence": {
+            "environment": detect_environment(),
+            "volume_root_configured": volume_root is not None,
+            "inside_volume": inside_volume,
+        },
+        "connection": {
+            "path": str(path),
+            "exists": exists,
+            "size_bytes": size,
+            "readable": readable,
+            "writable": writable,
+        },
+        "sqlite": {
+            "version": sqlite3.sqlite_version,
+            "journal_mode": journal,
+            "foreign_keys": bool(fk),
+            "busy_timeout_ms": busy,
+        },
+        "schema": {
+            "migration_version": current_version(db),
+            "migration_count": len(applied),
+            "migration_expected": len(MIGRATIONS),
+            "missing_expected_tables": missing,
+        },
+        "integrity": integrity,
+        "business": {
+            "products": counts.get("products", -1),
+            "users": counts.get("users", -1),
+            "customers": counts.get("customers", -1),
+            "orders": counts.get("orders", -1),
+            "payments": counts.get("payments", -1),
+            "affiliates": counts.get("affiliates", -1),
+            "commissions": counts.get("commissions", -1),
+        },
+        "inventory": inventory_block,
+        "row_counts": counts,
+        "last_order_created_at": last_write,
+        "environment": detect_environment(),
+    }

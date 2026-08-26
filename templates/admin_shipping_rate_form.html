@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{% if rate %}Edit shipping rate{% else %}Create shipping rate{% endif %} — Admin{% endblock %}
+{% block content %}
+<section class="panel">
+  <p class="muted small"><a href="{{ url_for('admin_shipping') }}">← Shipping pricing</a></p>
+  <h1>{% if rate %}Edit shipping rate{% else %}Create shipping rate{% endif %}</h1>
+  <p class="muted">Prices are in NZD. Use 0 for free shipping. Leave min/max blank for no limit. Higher priority wins if two rules could both match.</p>
+
+  {% set f = form %}
+  <form method="post" class="form-stack">
+    {% include "_csrf.html" %}
+    <label>Zone
+      <select name="shipping_zone_id" required>
+        <option value="">Choose zone</option>
+        {% for z in zones %}
+        <option value="{{ z.id }}"
+          {% if f and f.get('shipping_zone_id')|string == z.id|string %}selected
+          {% elif not f and rate and rate.shipping_zone_id == z.id %}selected{% endif %}>
+          {{ z.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Method
+      <select name="shipping_method_id" required>
+        <option value="">Choose method</option>
+        {% for m in methods %}
+        <option value="{{ m.id }}"
+          {% if f and f.get('shipping_method_id')|string == m.id|string %}selected
+          {% elif not f and rate and rate.shipping_method_id == m.id %}selected{% endif %}>
+          {{ m.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Price (NZD, 0 = FREE)
+      <input name="price" type="text" inputmode="decimal" required
+        value="{% if f %}{{ f.get('price') }}{% elif rate %}{{ '%.2f'|format(rate.price_cents / 100) }}{% else %}0.00{% endif %}">
+    </label>
+    <label>Minimum order (NZD, optional)
+      <input name="min_order_value" type="text" inputmode="decimal"
+        value="{% if f %}{{ f.get('min_order_value', '') }}{% elif rate and rate.min_order_value_cents is not none %}{{ '%.2f'|format(rate.min_order_value_cents / 100) }}{% endif %}">
+    </label>
+    <label>Maximum order (NZD, optional)
+      <input name="max_order_value" type="text" inputmode="decimal"
+        value="{% if f %}{{ f.get('max_order_value', '') }}{% elif rate and rate.max_order_value_cents is not none %}{{ '%.2f'|format(rate.max_order_value_cents / 100) }}{% endif %}">
+    </label>
+    <label>Minimum weight (grams, optional)
+      <input name="min_weight_grams" type="number" min="0" step="1"
+        value="{% if f %}{{ f.get('min_weight_grams', '') }}{% elif rate and rate.min_weight_grams is not none %}{{ rate.min_weight_grams }}{% endif %}">
+    </label>
+    <label>Maximum weight (grams, optional)
+      <input name="max_weight_grams" type="number" min="0" step="1"
+        value="{% if f %}{{ f.get('max_weight_grams', '') }}{% elif rate and rate.max_weight_grams is not none %}{{ rate.max_weight_grams }}{% endif %}">
+    </label>
+    <label>Priority (higher wins)
+      <input name="priority" type="number" step="1"
+        value="{% if f %}{{ f.get('priority', '0') }}{% elif rate %}{{ rate.priority }}{% else %}0{% endif %}">
+    </label>
+    <label>Estimated min business days (optional)
+      <input name="estimated_min_days" type="number" min="0" step="1"
+        value="{% if f %}{{ f.get('estimated_min_days', '') }}{% elif rate and rate.estimated_min_days is not none %}{{ rate.estimated_min_days }}{% endif %}">
+    </label>
+    <label>Estimated max business days (optional)
+      <input name="estimated_max_days" type="number" min="0" step="1"
+        value="{% if f %}{{ f.get('estimated_max_days', '') }}{% elif rate and rate.estimated_max_days is not none %}{{ rate.estimated_max_days }}{% endif %}">
+    </label>
+    <label>
+      <input type="checkbox" name="active" value="1"
+        {% if f and f.get('active') %}checked{% elif not f and (not rate or rate.active) %}checked{% endif %}>
+      Active
+    </label>
+    <input type="hidden" name="currency" value="NZD">
+    <div class="actions-row">
+      <button type="submit" class="btn primary">Save rate</button>
+      <a class="btn" href="{{ url_for('admin_shipping') }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
