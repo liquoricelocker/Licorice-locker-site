@@ -1087,13 +1087,23 @@ def seed_development_rates_if_empty(db: sqlite3.Connection) -> None:
 
 
 def apply_canonical_shipping_rates(db: sqlite3.Connection) -> None:
-    """Liquorice Locker store policy. Order-value rates only. No automated rest-of-world.
+    """Insert store policy rates only when ``shipping_rates`` is empty.
+
+    Never deletes or overwrites production/admin rates. Checkout still fails
+    safely if no matching active rate exists (never silent $0).
 
     NZ Standard: $0–$149.99 → $12; $150–$299.99 → $18; $300+ → FREE
     Australia Standard: $0–$199.99 → $35; $200+ → $50
     Rest of world: no rates (checkout shows Contact us)
     """
     if not _table_exists(db, "shipping_rates"):
+        return
+    existing = int(db.execute("SELECT COUNT(*) AS c FROM shipping_rates").fetchone()[0])
+    if existing > 0:
+        log.info(
+            "shipping_rates already has %s row(s); leaving database-owned prices unchanged",
+            existing,
+        )
         return
 
     def _id(table: str, code: str) -> Optional[int]:
@@ -1107,16 +1117,6 @@ def apply_canonical_shipping_rates(db: sqlite3.Connection) -> None:
     if not all([nz_m, au_m, z_nz, z_au]):
         return
 
-    db.execute(
-        "UPDATE shipping_methods SET name = ?, updated_at = datetime('now') WHERE code = ?",
-        ("Standard", "NZ_STANDARD"),
-    )
-    db.execute(
-        "UPDATE shipping_methods SET name = ?, updated_at = datetime('now') WHERE code = ?",
-        ("Standard", "INTERNATIONAL_STANDARD"),
-    )
-
-    db.execute("DELETE FROM shipping_rates")
     rows = [
         (nz_m, z_nz, 1200, None, 14999, 3, 5),
         (nz_m, z_nz, 1800, 15000, 29999, 3, 5),

@@ -73,9 +73,12 @@ class ProductionSafetyTests(IsolatedDbTest):
         mount = Path(self._tmp.name) / "empty-volume"
         mount.mkdir(parents=True, exist_ok=True)
         os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = str(mount)
+        path = self.database_config.get_database_path()
+        self.assertEqual(path, (mount / "licorice.db").resolve())
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
-            self.database_config.get_database_path()
-        self.assertIn("no Liquorice Locker database file", str(ctx.exception))
+            self.database.bootstrap()
+        self.assertIn("does not exist", str(ctx.exception))
+        self.assertFalse(path.exists())
 
     def test_production_volume_root_mismatch_fails(self) -> None:
         os.environ["LICORICE_ENV"] = "production"
@@ -399,6 +402,13 @@ class CsrfAndHealthTests(IsolatedDbTest):
         self.assertNotIn("password", blob.lower())
         self.assertIn("integrity", report)
         self.assertIn("business", report)
+        self.assertIn("environment", report["persistence"])
+        self.assertIn("status", report["persistence"])
+        self.assertIn("resolved_path", report["persistence"])
+        self.assertIn("wal", report["sqlite"])
+        self.assertIn("busy_timeout_ms", report["sqlite"])
+        self.assertIn("core_table_counts", report["schema"])
+        self.assertIn("integrity_status", report)
 
     def test_repeated_shop_requests_close_connections(self) -> None:
         self.database.bootstrap()

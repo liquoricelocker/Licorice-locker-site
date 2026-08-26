@@ -5,6 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "sh -c 'gunicorn --bind 0.0.0.0:$PORT app:app'"
+    "startCommand": "sh -c 'gunicorn --preload --bind 0.0.0.0:$PORT app:app'"
   }
 }

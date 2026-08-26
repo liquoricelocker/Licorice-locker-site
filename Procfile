@@ -1,1 +1,1 @@
-web: sh -c 'gunicorn --bind 0.0.0.0:$PORT app:app'
+web: sh -c 'gunicorn --preload --bind 0.0.0.0:$PORT app:app'

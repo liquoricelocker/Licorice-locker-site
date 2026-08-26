@@ -19,13 +19,21 @@ from werkzeug.security import generate_password_hash
 from database_config import (
     CORE_TABLES,
     ProductionDatabaseError,
+    assert_production_database_file,
     assert_production_path_on_volume,
+    configured_volume_root,
     detect_environment,
+    display_database_path,
     expected_volume_root,
     get_database_path,
     is_production,
-    is_test,
     log_database_config,
+    log_startup_success,
+    path_is_inside,
+    railway_diagnostics,
+    railway_volume_mount,
+    sqlite_header_ok,
+    sqlite_uri,
 )
 
 # Re-export for app.py and tests
@@ -252,16 +260,17 @@ def _migrate_normalize_user_emails(db: sqlite3.Connection) -> None:
 def get_connection() -> sqlite3.Connection:
     path = get_database_path()
     if is_production():
-        if not path.is_file():
-            raise ProductionDatabaseError(
-                "CRITICAL DATABASE SAFETY ERROR\n"
-                f"Production database was not found at the configured persistent path:\n  {path}\n"
-                "Refusing to create a new production database.\n"
-                "Check DATABASE_PATH and Railway Volume configuration."
-            )
+        assert_production_path_on_volume(path)
+        assert_production_database_file(path)
+        conn = sqlite3.connect(
+            sqlite_uri(path, mode="rw"),
+            uri=True,
+            check_same_thread=False,
+            timeout=30.0,
+        )
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")
@@ -452,7 +461,10 @@ def _backup_database_file(path: Path) -> Optional[Path]:
             dst.close()
     finally:
         src.close()
-    logging.getLogger("licorice.database").info("Wrote pre-migration backup %s", dest)
+    logging.getLogger("licorice.database").info(
+        "Wrote pre-migration backup next to the live database (licorice-pre-migration-%s.db)",
+        stamp,
+    )
     return dest
 
 
@@ -491,11 +503,14 @@ def _production_core_tables_ok(db: sqlite3.Connection) -> List[str]:
 
 
 def _assert_production_database_healthy(db: sqlite3.Connection, path: Path) -> None:
+    shown = display_database_path(path)
     missing = _production_core_tables_ok(db)
     if missing:
         raise ProductionDatabaseError(
             "CRITICAL DATABASE SAFETY ERROR\n"
-            f"Production database at {path} is missing core tables: {', '.join(missing)}\n"
+            "Production database could not be verified.\n"
+            f"DATABASE_PATH={shown}\n"
+            f"Missing core tables: {', '.join(missing)}\n"
             "Refusing to create a replacement database."
         )
     products = int(db.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"])
@@ -504,10 +519,57 @@ def _assert_production_database_healthy(db: sqlite3.Connection, path: Path) -> N
     if products == 0 and users == 0 and orders == 0:
         raise ProductionDatabaseError(
             "CRITICAL DATABASE SAFETY ERROR\n"
-            f"Production database at {path} exists but is unexpectedly empty "
-            "(no products, users, or orders).\n"
+            "Production database could not be verified.\n"
+            f"DATABASE_PATH={shown}\n"
+            "The database is unexpectedly empty (no products, users, or orders).\n"
             "Refusing to treat this as a valid production database."
         )
+
+
+def _assert_production_migrations_table(db: sqlite3.Connection, path: Path) -> None:
+    row = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = 'schema_migrations' LIMIT 1"
+    ).fetchone()
+    if not row:
+        shown = display_database_path(path)
+        raise ProductionDatabaseError(
+            "CRITICAL DATABASE SAFETY ERROR\n"
+            "Production database could not be verified.\n"
+            f"DATABASE_PATH={shown}\n"
+            "The schema_migrations table is missing after startup."
+        )
+
+
+def _sqlite_integrity_ok(db: sqlite3.Connection) -> bool:
+    try:
+        row = db.execute("PRAGMA integrity_check").fetchone()
+        return bool(row) and str(row[0]).lower() == "ok"
+    except sqlite3.Error:
+        return False
+
+
+@contextmanager
+def _startup_migration_lock(path: Path) -> Generator[None, None, None]:
+    """Serialize schema work across Gunicorn workers. Idempotent migrations remain the real safety net."""
+    lock_path = path.parent / ".licorice-migrate.lock"
+    try:
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    except OSError:
+        yield
+        return
+    try:
+        try:
+            import fcntl
+        except ImportError:
+            yield
+            return
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def bootstrap() -> None:
@@ -519,37 +581,49 @@ def bootstrap() -> None:
 
     if env == "production":
         assert_production_path_on_volume(path)
-        if not existed:
-            raise ProductionDatabaseError(
-                "CRITICAL DATABASE SAFETY ERROR\n"
-                f"Production database was not found at the configured persistent path:\n  {path}\n"
-                "Refusing to create a new production database.\n"
-                "Check DATABASE_PATH and Railway Volume configuration."
+        assert_production_database_file(path)
+
+    from migrations.runner import current_version, has_pending_migrations_readonly, run_migrations
+
+    with _startup_migration_lock(path):
+        if existed and has_pending_migrations_readonly(path):
+            _backup_database_file(path)
+
+        with get_db() as db:
+            if env == "production":
+                _assert_production_database_healthy(db, path)
+            applied = run_migrations(db)
+            if applied:
+                logging.getLogger("licorice.database").info(
+                    "Migrations applied: %s", ", ".join(applied)
+                )
+            if env == "production":
+                _assert_production_database_healthy(db, path)
+                _assert_production_migrations_table(db, path)
+            if env != "production":
+                seed_development_if_empty(db)
+                from shipping import seed_development_rates_if_empty
+
+                seed_development_rates_if_empty(db)
+            _warn_inventory_enforce_unpopulated(db)
+            journal = str(db.execute("PRAGMA journal_mode").fetchone()[0])
+            fk = bool(db.execute("PRAGMA foreign_keys").fetchone()[0])
+            integrity_ok = _sqlite_integrity_ok(db)
+            if env == "production" and not integrity_ok:
+                shown = display_database_path(path)
+                raise ProductionDatabaseError(
+                    "CRITICAL DATABASE SAFETY ERROR\n"
+                    "Production database could not be verified.\n"
+                    f"DATABASE_PATH={shown}\n"
+                    "SQLite integrity_check did not return ok."
+                )
+            log_startup_success(
+                path=path,
+                journal_mode=journal,
+                foreign_keys=fk,
+                migration=current_version(db),
+                integrity_ok=integrity_ok,
             )
-        if path.stat().st_size < 100:
-            raise ProductionDatabaseError(
-                "CRITICAL DATABASE SAFETY ERROR\n"
-                f"Production database at {path} is too small to be a real store database.\n"
-                "Refusing to start."
-            )
-
-    from migrations.runner import has_pending_migrations_readonly, run_migrations
-
-    if existed and has_pending_migrations_readonly(path):
-        _backup_database_file(path)
-
-    with get_db() as db:
-        if env == "production":
-            _assert_production_database_healthy(db, path)
-        applied = run_migrations(db)
-        if applied:
-            logging.getLogger("licorice.database").info("Migrations applied: %s", ", ".join(applied))
-        if env != "production":
-            seed_development_if_empty(db)
-            from shipping import seed_development_rates_if_empty
-
-            seed_development_rates_if_empty(db)
-        _warn_inventory_enforce_unpopulated(db)
 
 
 def init_db() -> None:
@@ -2860,13 +2934,18 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
     except sqlite3.Error:
         neg_qty = -1
     volume_root = expected_volume_root()
+    configured_root = configured_volume_root()
+    mount = railway_volume_mount()
     inside_volume = None
     if volume_root is not None:
-        try:
-            path.resolve().relative_to(volume_root)
-            inside_volume = True
-        except ValueError:
-            inside_volume = False
+        inside_volume = path_is_inside(path, volume_root)
+    env_name = detect_environment()
+    if env_name == "production" and inside_volume:
+        persistence_status = "verified"
+    elif env_name == "production":
+        persistence_status = "unverified"
+    else:
+        persistence_status = "local"
     inventory_block = {
         "enforcement": "ENABLED" if enforce else "DISABLED",
         "records": counts.get("inventory_items", -1),
@@ -2875,15 +2954,24 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
         "ledger_discrepancies": ledger,
         "unmanaged_sellable_skus": _unmanaged_sellable_sku_count(db),
     }
+    integrity_ok = _sqlite_integrity_ok(db)
     return {
         "database": {
             "path": str(path),
             "exists": exists,
             "size_bytes": size,
+            "readable": readable,
+            "writable": writable,
+            "sqlite_header_ok": sqlite_header_ok(path),
         },
         "persistence": {
-            "environment": detect_environment(),
-            "volume_root_configured": volume_root is not None,
+            "environment": env_name,
+            "status": persistence_status,
+            "volume_root": volume_root.as_posix() if volume_root is not None else None,
+            "volume_root_configured": configured_root is not None,
+            "railway_volume_detected": mount is not None,
+            "railway_volume_mount_path": mount.as_posix() if mount is not None else None,
+            "resolved_path": str(path),
             "inside_volume": inside_volume,
         },
         "connection": {
@@ -2896,16 +2984,26 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
         "sqlite": {
             "version": sqlite3.sqlite_version,
             "journal_mode": journal,
+            "wal": str(journal).lower() == "wal",
             "foreign_keys": bool(fk),
             "busy_timeout_ms": busy,
+            "integrity_check_ok": integrity_ok,
         },
         "schema": {
             "migration_version": current_version(db),
             "migration_count": len(applied),
             "migration_expected": len(MIGRATIONS),
             "missing_expected_tables": missing,
+            "core_table_counts": {
+                "products": counts.get("products", -1),
+                "users": counts.get("users", -1),
+                "orders": counts.get("orders", -1),
+                "order_items": counts.get("order_items", -1),
+                "shipping_rates": counts.get("shipping_rates", -1),
+            },
         },
         "integrity": integrity,
+        "integrity_status": "OK" if integrity_ok and not integrity.get("foreign_key_violation_count") else "CHECK",
         "business": {
             "products": counts.get("products", -1),
             "users": counts.get("users", -1),
@@ -2918,5 +3016,6 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
         "inventory": inventory_block,
         "row_counts": counts,
         "last_order_created_at": last_write,
-        "environment": detect_environment(),
+        "environment": env_name,
+        "railway": railway_diagnostics(),
     }

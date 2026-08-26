@@ -324,13 +324,11 @@ def affiliate_media_src(url: Optional[str]) -> str:
 
 
 # Schema migrations + production safety. Never overwrites catalogue data.
-database.bootstrap()
-logger.info(
-    "database_path=%s file_exists=%s environment=%s",
-    database.get_database_path(),
-    database.get_database_path().is_file(),
-    database.detect_environment(),
-)
+try:
+    database.bootstrap()
+except database.ProductionDatabaseError as exc:
+    logger.critical("%s", exc)
+    raise SystemExit(1) from exc
 with database.get_db() as _conn:
     database.sync_admin_allowlist_users(
         _conn,
@@ -4433,6 +4431,14 @@ def _affiliate_ref_query_last_click(response):
         httponly=True,
     )
     return response
+
+
+@app.cli.command("railway-db-status")
+def railway_db_status_command():
+    """Report Railway volume / database path status. No secrets."""
+    from database_config import format_railway_diagnostics
+
+    click.echo(format_railway_diagnostics())
 
 
 @app.cli.command("init-db")

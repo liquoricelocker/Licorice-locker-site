@@ -16,4 +16,7 @@ COPY . .
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:$PORT app:app"]
+# --preload: resolve/validate/migrate the database once in the master process
+# before workers serve traffic. Workers inherit the imported app; they do not
+# create or replace the SQLite file.
+CMD ["sh", "-c", "gunicorn --preload --bind 0.0.0.0:$PORT app:app"]

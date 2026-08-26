@@ -6,41 +6,45 @@ The business database is SQLite. The application must never silently create an e
 
 | Environment | Path |
 |-------------|------|
-| Production | **`DATABASE_PATH` (required)** on the Railway persistent volume |
+| Production | `DATABASE_PATH` if set; otherwise `<RAILWAY_VOLUME_MOUNT_PATH>/licorice.db`; otherwise **refuse to start** |
 | Development | `DATABASE_PATH` if set; otherwise existing `data/licorice.db` if present, else `data/licorice-dev.db` |
-| Tests | Isolated temp file via `DATABASE_PATH` + `LICORICE_ENV=test` or `development` |
+| Tests | Isolated temp file via `DATABASE_PATH` + `LICORICE_ENV=test` |
 
 Do not commit `.db` files. Pre-migration backups are written next to the live file as `licorice-pre-migration-YYYYMMDD-HHMMSS.db`. Those files must never be served as static assets.
 
 ## Environment variables
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_PATH` | Absolute path to the SQLite file. Required in production unless a Railway volume already contains `licorice.db`. |
-| `DATABASE_VOLUME_ROOT` | Optional. If set, `DATABASE_PATH` must be inside this directory. |
-| `RAILWAY_VOLUME_MOUNT_PATH` | Set by Railway when a volume is attached. If `DATABASE_PATH` is unset, the app will use an existing `licorice.db` on that mount. It will **not** create a new empty file. |
-| `LICORICE_ENV` | `production` / `development` / `test`. Production is also inferred from `RAILWAY_ENVIRONMENT`. |
-| `INVENTORY_ENFORCE` | If `1`/`true`, paid orders fail when stock is insufficient. **Default is off.** Enabling this before inventory is populated can block checkout. The app will not invent stock. Health reports `ENABLED` / `DISABLED`. |
+| Variable | Who sets it | Required in production | Purpose |
+|----------|-------------|------------------------|---------|
+| `DATABASE_PATH` | You | Strongly recommended | Absolute path to the SQLite file. Example: `/data/licorice.db`. Wins over the Railway fallback. |
+| `DATABASE_VOLUME_ROOT` | You | Recommended | If set, `DATABASE_PATH` must be inside this directory (`Path.relative_to`, not a string prefix). |
+| `RAILWAY_VOLUME_MOUNT_PATH` | Railway | No (automatic) | Injected when a Volume is attached. If `DATABASE_PATH` is empty, the app uses `<mount>/licorice.db`. It still **will not create** the file. |
+| `RAILWAY_ENVIRONMENT` | Railway | Automatic on Railway | Treated as production. |
+| `LICORICE_ENV` | You | Optional | `production` / `development` / `test`. |
+| `INVENTORY_ENFORCE` | You | No | If `1`/`true`, paid orders fail when stock is insufficient. **Default is off.** |
 
 ## Railway volume — manual verification required
 
-If `DATABASE_PATH` is unset and Railway has attached a volume (`RAILWAY_VOLUME_MOUNT_PATH`), the app will use an existing `licorice.db` (or `licorice-dev.db`) on that volume. It still **will not create** a blank production database.
-
-**RAILWAY CONFIGURATION REQUIRES MANUAL VERIFICATION**
+**The application never copies a database onto the Volume.** If production is still on ephemeral disk, you must place the live file on the Volume yourself.
 
 In Railway:
 
 1. Open the service → **Volumes**. If none is attached, attach one and note the **mount path**.
 2. Put the live database on that mount as `licorice.db`.
-3. Set `DATABASE_PATH` to that file, e.g. `<mount>/licorice.db` (recommended even if auto-detect works).
-4. Redeploy. If the file is missing, the app **will refuse to start** rather than create a blank shop.
+3. Set `DATABASE_PATH` to that file, e.g. `/data/licorice.db` when the mount is `/data`.
+4. Set `DATABASE_VOLUME_ROOT` to the same mount, e.g. `/data`.
+5. Redeploy. If the file is missing, the app **will refuse to start** rather than create a blank shop.
 
-If the live site was previously using a database inside the container filesystem (lost on deploy), restore from backup onto the volume first.
+Diagnostic (does not create a database):
+
+```bash
+python3 -m database_config
+```
 
 ## Startup safety
 
 1. Resolve `DATABASE_PATH`.
-2. Production: fail if the path is missing, the file is missing, the file is tiny, core tables are missing, or the file has zero products **and** zero users **and** zero orders.
+2. Production: fail if the path is relative, outside `DATABASE_VOLUME_ROOT` (when set), the parent directory is missing, the file is missing, unreadable, unwritable, too small, not SQLite, core tables are missing, or the file has zero products **and** zero users **and** zero orders.
 3. Backup with the SQLite backup API if migrations are pending.
 4. Run unused migrations once; record them in `schema_migrations`.
 5. **Do not** rewrite product names, prices, descriptions, or galleries from Python.
@@ -52,6 +56,7 @@ Production never creates a new database file. That rule is permanent.
 
 All application code must use `db.get_db()` / `db.get_connection()`.
 
+- Production opens with SQLite URI `mode=rw` so a missing file is an error, not a new empty database
 - `foreign_keys = ON`
 - `journal_mode = WAL`
 - `busy_timeout = 5000`
@@ -65,7 +70,7 @@ Do not add a second database helper.
 
 ## Migrations
 
-Code: `migrations/runner.py`, versions `001`–`011`.
+Code: `migrations/runner.py`, versions `001`–`013`.
 
 ```
 flask --app app init-db
@@ -77,6 +82,8 @@ Re-running migrations is safe; applied versions are skipped.
 
 - `010_hardening` — `stripe_processed_events`, unique SALE-per-order, supplier-component uniqueness.
 - `011_inventory_refs` — unique RECEIPT/RETURN/PRODUCTION_OUTPUT per reference.
+- `012_shipping_pricing` — shipping methods, zones, rates, settings (schema + reference data, not live prices).
+- `013_canonical_shipping_rates` — inserts canonical rates **only if `shipping_rates` is empty**. Never deletes production rates.
 
 **Migration failure:** a version is stamped only after the migration function returns. Python `executescript()` issues `COMMIT`, so DDL from a failed version may already exist even though `schema_migrations` does not list it. Recovery: restore the timestamped pre-migration backup, fix the migration, restart. Do not stamp by hand.
 
@@ -96,7 +103,7 @@ Stripe refunds are **not** implemented. Do not invent a refund pipeline. When ad
 ## Tests
 
 ```bash
-python3 -m unittest tests.test_database_persistence tests.test_database_hardening tests.test_production_readiness -v
+python3 -m unittest tests.test_database_persistence tests.test_database_hardening tests.test_production_readiness tests.test_shipping_pricing tests.test_railway_database -v
 ```
 
 Tests refuse `data/licorice.db` and `data/licorice-dev.db` when `LICORICE_ENV=test`.
@@ -128,7 +135,7 @@ Staff only (admin login + allowlist):
 
 `GET /dashboard/admin/database-health`
 
-Returns connection path/size/readable/writable, SQLite version/journal/foreign_keys/busy_timeout, migration version, missing tables, integrity (orphans, duplicates, invalid financial values), and row counts. No customer PII, card data, or Stripe secrets. The endpoint does not write.
+Returns environment, resolved path, exists/size/readable/writable, persistence/volume status, SQLite version/WAL/foreign_keys/busy_timeout, migration version, core table counts, integrity, and row counts. No customer PII, card data, or Stripe secrets. The endpoint does not write.
 
 Integrity is also available in-process via `database.integrity_report(conn)` (read-only).
 

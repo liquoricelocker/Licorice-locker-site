@@ -332,6 +332,19 @@ class CalculatorPickupAndEdges(ShippingPricingTest):
         self.assertFalse(q.ok)
         self.assertIsNone(q.price_cents)
 
+    def test_apply_canonical_does_not_overwrite_existing_rates(self) -> None:
+        with self._db() as db:
+            db.execute("UPDATE shipping_rates SET price_cents = 4242 WHERE price_cents = 1200")
+            self.shipping.apply_canonical_shipping_rates(db)
+            row = db.execute(
+                "SELECT price_cents FROM shipping_rates WHERE price_cents = 4242"
+            ).fetchone()
+            self.assertIsNotNone(row)
+            restored = db.execute(
+                "SELECT 1 FROM shipping_rates WHERE price_cents = 1200"
+            ).fetchone()
+            self.assertIsNone(restored)
+
     def test_available_methods_omit_unmatched(self) -> None:
         with self._db() as db:
             quotes, err, _, _ = self.shipping.list_quotes_for_destination(db, self._cart(db), "NZ")
