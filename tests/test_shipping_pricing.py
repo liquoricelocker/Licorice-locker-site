@@ -23,6 +23,7 @@ class ShippingPricingTest(unittest.TestCase):
         os.environ["LICORICE_ENV"] = "test"
         os.environ["DATABASE_PATH"] = self.db_path
         os.environ.pop("RAILWAY_ENVIRONMENT", None)
+        os.environ.pop("RAILWAY_VOLUME_MOUNT_PATH", None)
         os.environ.pop("RENDER", None)
         os.environ.pop("DATABASE_VOLUME_ROOT", None)
         os.environ.pop("INVENTORY_ENFORCE", None)

@@ -81,21 +81,70 @@ def _reject_dangerous_test_path(path: Path) -> None:
         )
 
 
+def railway_volume_mount() -> Optional[Path]:
+    """Railway injects this when a volume is attached. Do not invent a mount path."""
+    raw = (os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or "").strip()
+    if not raw:
+        return None
+    return _expand(raw)
+
+
+def _existing_db_on_volume(mount: Path) -> Optional[Path]:
+    """Prefer a real shop file already on the volume. Never create one here."""
+    for candidate in (
+        mount / "licorice.db",
+        mount / "licorice-dev.db",
+        mount / "data" / "licorice.db",
+        mount / "data" / "licorice-dev.db",
+    ):
+        try:
+            if candidate.is_file() and candidate.stat().st_size >= 100:
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
 def get_database_path() -> Path:
     """Single resolver for the SQLite file. Do not construct ``data/licorice.db`` elsewhere."""
     env = detect_environment()
     raw = (os.environ.get("DATABASE_PATH") or "").strip()
 
     if env == "production":
-        if not raw:
+        if raw:
+            return _expand(raw).resolve()
+        mount = railway_volume_mount()
+        if mount is not None:
+            existing = _existing_db_on_volume(mount)
+            if existing is not None:
+                log.warning(
+                    "DATABASE_PATH is unset; using existing Railway volume file %s. "
+                    "Set DATABASE_PATH explicitly to this file.",
+                    existing,
+                )
+                return existing.resolve()
+            default = (mount / "licorice.db").resolve()
             raise ProductionDatabaseError(
                 "CRITICAL DATABASE SAFETY ERROR\n"
-                "Production requires DATABASE_PATH on the Railway persistent volume.\n"
-                "Refusing to fall back to a local SQLite file.\n"
-                "Set DATABASE_PATH to the mounted volume file (example: /data/licorice.db) "
-                "after confirming the volume mount in Railway."
+                "A Railway volume is mounted, but no Liquorice Locker database file was found on it.\n"
+                f"  volume mount: {mount.resolve()}\n"
+                f"  looked for: {default}\n"
+                "Refusing to create a blank production shop.\n"
+                "Restore the live .db onto the volume, then set DATABASE_PATH to that file "
+                f"(example: {default})."
             )
-        return _expand(raw).resolve()
+        raise ProductionDatabaseError(
+            "CRITICAL DATABASE SAFETY ERROR\n"
+            "Production requires a persistent SQLite file.\n"
+            "DATABASE_PATH is not set, and no Railway volume is attached "
+            "(RAILWAY_VOLUME_MOUNT_PATH is empty).\n"
+            "Refusing to fall back to a local SQLite file that would be wiped on the next deploy.\n\n"
+            "In Railway:\n"
+            "  1. Attach a Volume to this service and note the mount path.\n"
+            "  2. Put the live database on that volume.\n"
+            "  3. Set DATABASE_PATH to that file (example: /data/licorice.db).\n"
+            "Optional: set DATABASE_VOLUME_ROOT to the same mount."
+        )
 
     if raw:
         resolved = _expand(raw)
@@ -123,9 +172,15 @@ def get_database_path() -> Path:
 
 def expected_volume_root() -> Optional[Path]:
     raw = (os.environ.get("DATABASE_VOLUME_ROOT") or "").strip()
-    if not raw:
-        return None
-    return _expand(raw).resolve()
+    if raw:
+        return _expand(raw).resolve()
+    mount = railway_volume_mount()
+    if mount is not None:
+        try:
+            return mount.resolve()
+        except OSError:
+            return mount
+    return None
 
 
 def assert_production_path_on_volume(path: Path) -> None:

@@ -16,6 +16,7 @@ class DatabasePersistenceTests(unittest.TestCase):
         os.environ["LICORICE_ENV"] = "development"
         os.environ["DATABASE_PATH"] = self.db_path
         os.environ.pop("RAILWAY_ENVIRONMENT", None)
+        os.environ.pop("RAILWAY_VOLUME_MOUNT_PATH", None)
         os.environ.pop("RENDER", None)
         os.environ.pop("DATABASE_VOLUME_ROOT", None)
 
@@ -167,6 +168,7 @@ class DatabasePersistenceTests(unittest.TestCase):
     def test_production_requires_database_path(self) -> None:
         os.environ["LICORICE_ENV"] = "production"
         os.environ.pop("DATABASE_PATH", None)
+        os.environ.pop("RAILWAY_VOLUME_MOUNT_PATH", None)
         with self.assertRaises(self.database_config.ProductionDatabaseError):
             self.database_config.get_database_path()
 

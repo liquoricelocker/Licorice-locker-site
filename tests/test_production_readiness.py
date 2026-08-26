@@ -22,6 +22,7 @@ class IsolatedDbTest(unittest.TestCase):
         os.environ["LICORICE_ENV"] = "test"
         os.environ["DATABASE_PATH"] = self.db_path
         os.environ.pop("RAILWAY_ENVIRONMENT", None)
+        os.environ.pop("RAILWAY_VOLUME_MOUNT_PATH", None)
         os.environ.pop("RENDER", None)
         os.environ.pop("DATABASE_VOLUME_ROOT", None)
         os.environ.pop("INVENTORY_ENFORCE", None)
@@ -50,9 +51,31 @@ class ProductionSafetyTests(IsolatedDbTest):
     def test_production_never_falls_back_to_local_file(self) -> None:
         os.environ["LICORICE_ENV"] = "production"
         os.environ.pop("DATABASE_PATH", None)
+        os.environ.pop("RAILWAY_VOLUME_MOUNT_PATH", None)
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
             self.database_config.get_database_path()
         self.assertIn("DATABASE_PATH", str(ctx.exception))
+
+    def test_production_uses_existing_file_on_railway_volume(self) -> None:
+        os.environ["LICORICE_ENV"] = "production"
+        os.environ.pop("DATABASE_PATH", None)
+        mount = Path(self._tmp.name) / "volume"
+        mount.mkdir(parents=True, exist_ok=True)
+        dbfile = mount / "licorice.db"
+        dbfile.write_bytes(b"x" * 200)
+        os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = str(mount)
+        path = self.database_config.get_database_path()
+        self.assertEqual(path, dbfile.resolve())
+
+    def test_production_empty_railway_volume_refuses_to_create(self) -> None:
+        os.environ["LICORICE_ENV"] = "production"
+        os.environ.pop("DATABASE_PATH", None)
+        mount = Path(self._tmp.name) / "empty-volume"
+        mount.mkdir(parents=True, exist_ok=True)
+        os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = str(mount)
+        with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
+            self.database_config.get_database_path()
+        self.assertIn("no Liquorice Locker database file", str(ctx.exception))
 
     def test_production_volume_root_mismatch_fails(self) -> None:
         os.environ["LICORICE_ENV"] = "production"

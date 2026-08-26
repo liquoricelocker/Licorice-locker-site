@@ -16,24 +16,24 @@ Do not commit `.db` files. Pre-migration backups are written next to the live fi
 
 | Variable | Purpose |
 |----------|---------|
-| `DATABASE_PATH` | Absolute path to the SQLite file. **Required in production.** |
+| `DATABASE_PATH` | Absolute path to the SQLite file. Required in production unless a Railway volume already contains `licorice.db`. |
 | `DATABASE_VOLUME_ROOT` | Optional. If set, `DATABASE_PATH` must be inside this directory. |
+| `RAILWAY_VOLUME_MOUNT_PATH` | Set by Railway when a volume is attached. If `DATABASE_PATH` is unset, the app will use an existing `licorice.db` on that mount. It will **not** create a new empty file. |
 | `LICORICE_ENV` | `production` / `development` / `test`. Production is also inferred from `RAILWAY_ENVIRONMENT`. |
 | `INVENTORY_ENFORCE` | If `1`/`true`, paid orders fail when stock is insufficient. **Default is off.** Enabling this before inventory is populated can block checkout. The app will not invent stock. Health reports `ENABLED` / `DISABLED`. |
 
 ## Railway volume — manual verification required
 
-This repository does **not** contain the Railway volume mount path.
+If `DATABASE_PATH` is unset and Railway has attached a volume (`RAILWAY_VOLUME_MOUNT_PATH`), the app will use an existing `licorice.db` (or `licorice-dev.db`) on that volume. It still **will not create** a blank production database.
 
 **RAILWAY CONFIGURATION REQUIRES MANUAL VERIFICATION**
 
 In Railway:
 
-1. Open the service → **Volumes**.
-2. Note the **mount path** (example only: `/data` — do not assume this).
-3. Set `DATABASE_PATH` to a file **on that mount**, e.g. `<mount>/licorice.db`.
-4. Optionally set `DATABASE_VOLUME_ROOT` to the same mount path.
-5. Copy / restore the real production database onto that path **before** the first deploy of this code. If the file is missing, the app **will refuse to start** rather than create a blank shop.
+1. Open the service → **Volumes**. If none is attached, attach one and note the **mount path**.
+2. Put the live database on that mount as `licorice.db`.
+3. Set `DATABASE_PATH` to that file, e.g. `<mount>/licorice.db` (recommended even if auto-detect works).
+4. Redeploy. If the file is missing, the app **will refuse to start** rather than create a blank shop.
 
 If the live site was previously using a database inside the container filesystem (lost on deploy), restore from backup onto the volume first.
 
