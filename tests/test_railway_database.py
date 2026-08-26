@@ -116,7 +116,7 @@ class RailwayDatabaseTests(unittest.TestCase):
         os.environ["DATABASE_VOLUME_ROOT"] = str(missing.parent)
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
             self.database.bootstrap()
-        self.assertIn("The file does not exist", str(ctx.exception))
+        self.assertIn("Volume", str(ctx.exception))
         self.assertFalse(missing.exists())
         with self.assertRaises(self.database_config.ProductionDatabaseError):
             self.database.get_connection()
@@ -128,7 +128,7 @@ class RailwayDatabaseTests(unittest.TestCase):
         os.environ["DATABASE_PATH"] = str(missing)
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
             self.database.bootstrap()
-        self.assertIn("parent directory does not exist", str(ctx.exception))
+        self.assertIn("Volume", str(ctx.exception))
         self.assertFalse(missing.exists())
 
     def test_invalid_sqlite_header_fails(self) -> None:
@@ -137,15 +137,19 @@ class RailwayDatabaseTests(unittest.TestCase):
         junk.parent.mkdir(parents=True, exist_ok=True)
         junk.write_bytes(b"x" * 200)
         os.environ["DATABASE_PATH"] = str(junk)
+        os.environ["DATABASE_VOLUME_ROOT"] = str(junk.parent)
+        os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = str(junk.parent)
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
             self.database.bootstrap()
         self.assertIn("not a valid SQLite database", str(ctx.exception))
 
     def test_valid_production_database_opens(self) -> None:
         self._boot_isolated_shop()
+        volume = Path(self.db_path).parent
         os.environ["LICORICE_ENV"] = "production"
         os.environ["DATABASE_PATH"] = self.db_path
-        os.environ.pop("DATABASE_VOLUME_ROOT", None)
+        os.environ["DATABASE_VOLUME_ROOT"] = str(volume)
+        os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = str(volume)
         self.database.bootstrap()
         with self.database.get_db(commit=False) as db:
             n = int(db.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"])
@@ -206,6 +210,52 @@ class RailwayDatabaseTests(unittest.TestCase):
         self.assertIn("013_canonical_shipping_rates", report["schema"]["migration_version"])
         self.assertGreaterEqual(report["schema"]["core_table_counts"]["products"], 1)
         self.assertNotIn("sk_live", str(report).lower())
+
+    def test_cutover_inspect_does_not_create_files(self) -> None:
+        missing_dir = Path(self._tmp.name) / "no-data"
+        missing_db = missing_dir / "licorice.db"
+        ephemeral_missing = Path(self._tmp.name) / "app-data" / "licorice.db"
+        text = self.database_config.format_cutover_diagnostics(
+            targets=(
+                ("volume_mount_dir", missing_dir),
+                ("volume_database", missing_db),
+                ("ephemeral_data_licorice_db", ephemeral_missing),
+            )
+        )
+        self.assertFalse(missing_dir.exists())
+        self.assertFalse(missing_db.exists())
+        self.assertFalse(ephemeral_missing.exists())
+        self.assertIn("does not create files", text)
+        self.assertIn("exists: no", text)
+        self.assertNotIn("sk_live", text)
+
+    def test_cutover_inspect_reads_existing_sqlite_only(self) -> None:
+        self._boot_isolated_shop()
+        before = Path(self.db_path).stat().st_mtime
+        volume = Path(self._tmp.name) / "empty-volume"
+        volume.mkdir()
+        info = self.database_config.inspect_production_cutover(
+            targets=(
+                ("volume_mount_dir", volume),
+                ("volume_database", volume / "licorice.db"),
+                ("ephemeral_data_licorice_db", Path(self.db_path)),
+            )
+        )
+        after = Path(self.db_path).stat().st_mtime
+        self.assertEqual(before, after)
+        self.assertFalse((volume / "licorice.db").exists())
+        self.assertTrue(info["conclusions"]["ephemeral_data_licorice_db_exists"])
+        self.assertFalse(info["conclusions"]["volume_database_exists"])
+        self.assertTrue(info["conclusions"]["volume_looks_empty_of_sqlite"])
+        eph = info["files"]["ephemeral_data_licorice_db"]
+        self.assertTrue(eph["sqlite_valid"])
+        self.assertGreaterEqual(eph["products"], 1)
+        self.assertIsInstance(eph["orders"], int)
+        self.assertIsInstance(eph["users"], int)
+        self.assertIn("013_canonical_shipping_rates", eph["migration_version"])
+        blob = str(info)
+        self.assertNotIn("password", blob.lower())
+        self.assertNotIn("@", blob)
 
 
 if __name__ == "__main__":

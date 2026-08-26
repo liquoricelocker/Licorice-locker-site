@@ -1086,6 +1086,40 @@ def seed_development_rates_if_empty(db: sqlite3.Connection) -> None:
     apply_canonical_shipping_rates(db)
 
 
+def seed_local_pickup_rate_if_missing(db: sqlite3.Connection) -> None:
+    """NZ local pickup at $0. Does not modify other rates."""
+    if not _table_exists(db, "shipping_rates"):
+        return
+    pickup = db.execute(
+        "SELECT id FROM shipping_methods WHERE code = 'LOCAL_PICKUP'"
+    ).fetchone()
+    zone = db.execute("SELECT id FROM shipping_zones WHERE code = 'NZ'").fetchone()
+    if pickup is None or zone is None:
+        return
+    exists = db.execute(
+        """
+        SELECT 1 FROM shipping_rates
+        WHERE shipping_method_id = ? AND shipping_zone_id = ?
+        LIMIT 1
+        """,
+        (int(pickup["id"]), int(zone["id"])),
+    ).fetchone()
+    if exists:
+        return
+    db.execute(
+        """
+        INSERT INTO shipping_rates (
+            shipping_method_id, shipping_zone_id, price_cents, currency,
+            min_order_value_cents, max_order_value_cents,
+            min_weight_grams, max_weight_grams,
+            active, priority, estimated_min_days, estimated_max_days
+        ) VALUES (?, ?, 0, ?, NULL, NULL, NULL, NULL, 1, 20, 0, 0)
+        """,
+        (int(pickup["id"]), int(zone["id"]), STORE_CURRENCY),
+    )
+    log.info("Inserted LOCAL_PICKUP rate at 0 cents (first-boot / missing only)")
+
+
 def apply_canonical_shipping_rates(db: sqlite3.Connection) -> None:
     """Insert store policy rates only when ``shipping_rates`` is empty.
 

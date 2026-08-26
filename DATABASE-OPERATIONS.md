@@ -50,7 +50,7 @@ python3 -m database_config
 5. **Do not** rewrite product names, prices, descriptions, or galleries from Python.
 6. Development only: seed catalogue if `products` is empty.
 
-Production never creates a new database file. That rule is permanent.
+Production never creates a new database file **except** a verified empty Railway Volume (`EMPTY_VOLUME_BOOTSTRAP`). That rule is otherwise permanent: existing `/data/licorice.db` is never replaced.
 
 ## Connection strategy
 

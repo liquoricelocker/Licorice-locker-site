@@ -162,7 +162,7 @@ class DatabasePersistenceTests(unittest.TestCase):
         os.environ["DATABASE_PATH"] = missing
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
             self.database.bootstrap()
-        self.assertIn("Refusing to create a new production database", str(ctx.exception))
+        self.assertIn("Volume", str(ctx.exception))
         self.assertFalse(Path(missing).exists())
 
     def test_production_requires_database_path(self) -> None:

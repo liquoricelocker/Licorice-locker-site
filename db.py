@@ -18,20 +18,28 @@ from werkzeug.security import generate_password_hash
 
 from database_config import (
     CORE_TABLES,
+    DATABASE_STATE_DEVELOPMENT,
+    DATABASE_STATE_EMPTY_VOLUME_BOOTSTRAP,
+    DATABASE_STATE_EXISTING,
+    DATABASE_STATE_TEST,
     ProductionDatabaseError,
     assert_production_database_file,
     assert_production_path_on_volume,
+    classify_production_database_state,
     configured_volume_root,
     detect_environment,
     display_database_path,
     expected_volume_root,
     get_database_path,
     is_production,
+    last_database_state,
     log_database_config,
     log_startup_success,
     path_is_inside,
+    raise_for_production_state,
     railway_diagnostics,
     railway_volume_mount,
+    set_last_database_state,
     sqlite_header_ok,
     sqlite_uri,
 )
@@ -262,15 +270,14 @@ def get_connection() -> sqlite3.Connection:
     if is_production():
         assert_production_path_on_volume(path)
         assert_production_database_file(path)
-        conn = sqlite3.connect(
-            sqlite_uri(path, mode="rw"),
-            uri=True,
-            check_same_thread=False,
-            timeout=30.0,
-        )
+        conn = _open_sqlite(path, create=False)
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+        conn = _open_sqlite(path, create=True)
+    return conn
+
+
+def _apply_connection_pragmas(conn: sqlite3.Connection) -> None:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")
@@ -282,6 +289,19 @@ def get_connection() -> sqlite3.Connection:
         conn.execute("PRAGMA synchronous = NORMAL")
     except sqlite3.OperationalError:
         pass
+
+
+def _open_sqlite(path: Path, *, create: bool) -> sqlite3.Connection:
+    if create:
+        conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+    else:
+        conn = sqlite3.connect(
+            sqlite_uri(path, mode="rw"),
+            uri=True,
+            check_same_thread=False,
+            timeout=30.0,
+        )
+    _apply_connection_pragmas(conn)
     return conn
 
 
@@ -548,6 +568,97 @@ def _sqlite_integrity_ok(db: sqlite3.Connection) -> bool:
         return False
 
 
+def _sqlite_fk_ok(db: sqlite3.Connection) -> bool:
+    try:
+        rows = db.execute("PRAGMA foreign_key_check").fetchall()
+        return len(rows) == 0
+    except sqlite3.Error:
+        return False
+
+
+def _cleanup_sqlite_sidecars(path: Path) -> None:
+    for extra in (path, Path(str(path) + "-wal"), Path(str(path) + "-shm")):
+        try:
+            extra.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def seed_production_first_boot(db: sqlite3.Connection) -> None:
+    """Official catalogue and shipping config only. No customers, orders, users, or payments."""
+    n = int(db.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"])
+    if n == 0:
+        logging.getLogger("licorice.database").info(
+            "Production first-boot: inserting official Liquorice Locker catalogue"
+        )
+        _ensure_core_products(db)
+        _backfill_product_enhanced(db)
+        _ensure_product_specs(db)
+        _ensure_product_images_tags(db)
+        _apply_initial_marketing_copy(db)
+        ensure_default_variants(db)
+        _ensure_inventory_rows_for_variants(db)
+    from shipping import apply_canonical_shipping_rates, seed_local_pickup_rate_if_missing
+
+    apply_canonical_shipping_rates(db)
+    seed_local_pickup_rate_if_missing(db)
+
+
+def _create_verified_volume_database(path: Path) -> None:
+    """Create SQLite on a verified empty Volume via a temp file, then atomically replace."""
+    parent = path.parent
+    if not parent.is_dir():
+        parent.mkdir(parents=True, exist_ok=True)
+    tmp = parent / f".{path.name}.bootstrap-tmp"
+    _cleanup_sqlite_sidecars(tmp)
+    conn: Optional[sqlite3.Connection] = None
+    try:
+        conn = _open_sqlite(tmp, create=True)
+        from migrations.runner import run_migrations
+
+        applied = run_migrations(conn)
+        if applied:
+            logging.getLogger("licorice.database").info(
+                "First-boot migrations applied: %s", ", ".join(applied)
+            )
+        seed_production_first_boot(conn)
+        conn.commit()
+        shown = display_database_path(path)
+        if not _sqlite_integrity_ok(conn):
+            raise ProductionDatabaseError(
+                "CRITICAL DATABASE SAFETY ERROR\n"
+                "First-boot bootstrap failed.\n"
+                f"DATABASE_PATH={shown}\n"
+                "SQLite integrity_check did not return ok."
+            )
+        if not _sqlite_fk_ok(conn):
+            raise ProductionDatabaseError(
+                "CRITICAL DATABASE SAFETY ERROR\n"
+                "First-boot bootstrap failed.\n"
+                f"DATABASE_PATH={shown}\n"
+                "PRAGMA foreign_key_check found violations."
+            )
+        _assert_production_database_healthy(conn, path)
+        _assert_production_migrations_table(conn, path)
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+        conn.commit()
+        conn.close()
+        conn = None
+        os.replace(str(tmp), str(path))
+        _cleanup_sqlite_sidecars(tmp)
+    except Exception:
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        _cleanup_sqlite_sidecars(tmp)
+        raise
+
+
 @contextmanager
 def _startup_migration_lock(path: Path) -> Generator[None, None, None]:
     """Serialize schema work across Gunicorn workers. Idempotent migrations remain the real safety net."""
@@ -577,20 +688,38 @@ def bootstrap() -> None:
     env = detect_environment()
     path = get_database_path()
     existed = path.is_file()
+    first_boot = False
+    state = DATABASE_STATE_TEST if env == "test" else DATABASE_STATE_DEVELOPMENT
     log_database_config(exists=existed, created_new=False)
 
     if env == "production":
-        assert_production_path_on_volume(path)
-        assert_production_database_file(path)
+        state = classify_production_database_state(path)
+        set_last_database_state(state)
+        raise_for_production_state(state, path)
+        if state == DATABASE_STATE_EMPTY_VOLUME_BOOTSTRAP:
+            first_boot = True
+            logging.getLogger("licorice.database").info(
+                "Database state: EMPTY VOLUME BOOTSTRAP — creating %s on verified Volume",
+                display_database_path(path),
+            )
+            _create_verified_volume_database(path)
+            existed = True
+        elif state == DATABASE_STATE_EXISTING:
+            assert_production_path_on_volume(path)
+            assert_production_database_file(path)
+        else:
+            raise_for_production_state(state, path)
+    else:
+        set_last_database_state(state)
 
     from migrations.runner import current_version, has_pending_migrations_readonly, run_migrations
 
     with _startup_migration_lock(path):
-        if existed and has_pending_migrations_readonly(path):
+        if existed and not first_boot and has_pending_migrations_readonly(path):
             _backup_database_file(path)
 
         with get_db() as db:
-            if env == "production":
+            if env == "production" and not first_boot:
                 _assert_production_database_healthy(db, path)
             applied = run_migrations(db)
             if applied:
@@ -609,6 +738,7 @@ def bootstrap() -> None:
             journal = str(db.execute("PRAGMA journal_mode").fetchone()[0])
             fk = bool(db.execute("PRAGMA foreign_keys").fetchone()[0])
             integrity_ok = _sqlite_integrity_ok(db)
+            fk_ok = _sqlite_fk_ok(db)
             if env == "production" and not integrity_ok:
                 shown = display_database_path(path)
                 raise ProductionDatabaseError(
@@ -617,12 +747,21 @@ def bootstrap() -> None:
                     f"DATABASE_PATH={shown}\n"
                     "SQLite integrity_check did not return ok."
                 )
+            if env == "production" and not fk_ok:
+                shown = display_database_path(path)
+                raise ProductionDatabaseError(
+                    "CRITICAL DATABASE SAFETY ERROR\n"
+                    "Production database could not be verified.\n"
+                    f"DATABASE_PATH={shown}\n"
+                    "PRAGMA foreign_key_check found violations."
+                )
             log_startup_success(
                 path=path,
                 journal_mode=journal,
                 foreign_keys=fk,
                 migration=current_version(db),
-                integrity_ok=integrity_ok,
+                integrity_ok=integrity_ok and fk_ok,
+                database_state=last_database_state(),
             )
 
 
@@ -2940,8 +3079,9 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
     if volume_root is not None:
         inside_volume = path_is_inside(path, volume_root)
     env_name = detect_environment()
+    boot_state = last_database_state()
     if env_name == "production" and inside_volume:
-        persistence_status = "verified"
+        persistence_status = "VERIFIED"
     elif env_name == "production":
         persistence_status = "unverified"
     else:
@@ -2955,6 +3095,7 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
         "unmanaged_sellable_skus": _unmanaged_sellable_sku_count(db),
     }
     integrity_ok = _sqlite_integrity_ok(db)
+    fk_check_ok = _sqlite_fk_ok(db)
     return {
         "database": {
             "path": str(path),
@@ -2967,6 +3108,7 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
         "persistence": {
             "environment": env_name,
             "status": persistence_status,
+            "database_state": boot_state,
             "volume_root": volume_root.as_posix() if volume_root is not None else None,
             "volume_root_configured": configured_root is not None,
             "railway_volume_detected": mount is not None,
@@ -2988,6 +3130,7 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
             "foreign_keys": bool(fk),
             "busy_timeout_ms": busy,
             "integrity_check_ok": integrity_ok,
+            "foreign_key_check_ok": fk_check_ok,
         },
         "schema": {
             "migration_version": current_version(db),
@@ -3003,7 +3146,9 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
             },
         },
         "integrity": integrity,
-        "integrity_status": "OK" if integrity_ok and not integrity.get("foreign_key_violation_count") else "CHECK",
+        "integrity_status": "OK"
+        if integrity_ok and fk_check_ok and not integrity.get("foreign_key_violation_count")
+        else "CHECK",
         "business": {
             "products": counts.get("products", -1),
             "users": counts.get("users", -1),
@@ -3012,6 +3157,7 @@ def database_health_report(db: sqlite3.Connection) -> Dict[str, Any]:
             "payments": counts.get("payments", -1),
             "affiliates": counts.get("affiliates", -1),
             "commissions": counts.get("commissions", -1),
+            "shipping_rates": counts.get("shipping_rates", -1),
         },
         "inventory": inventory_block,
         "row_counts": counts,

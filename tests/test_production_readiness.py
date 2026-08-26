@@ -67,18 +67,20 @@ class ProductionSafetyTests(IsolatedDbTest):
         path = self.database_config.get_database_path()
         self.assertEqual(path, dbfile.resolve())
 
-    def test_production_empty_railway_volume_refuses_to_create(self) -> None:
+    def test_production_empty_railway_volume_bootstraps_once(self) -> None:
         os.environ["LICORICE_ENV"] = "production"
         os.environ.pop("DATABASE_PATH", None)
         mount = Path(self._tmp.name) / "empty-volume"
         mount.mkdir(parents=True, exist_ok=True)
         os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = str(mount)
+        os.environ["DATABASE_VOLUME_ROOT"] = str(mount)
         path = self.database_config.get_database_path()
         self.assertEqual(path, (mount / "licorice.db").resolve())
-        with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
-            self.database.bootstrap()
-        self.assertIn("does not exist", str(ctx.exception))
-        self.assertFalse(path.exists())
+        self.database.bootstrap()
+        self.assertTrue(path.is_file())
+        with self.database.get_db(commit=False) as db:
+            products = int(db.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"])
+        self.assertGreaterEqual(products, 5)
 
     def test_production_volume_root_mismatch_fails(self) -> None:
         os.environ["LICORICE_ENV"] = "production"

@@ -4436,9 +4436,9 @@ def _affiliate_ref_query_last_click(response):
 @app.cli.command("railway-db-status")
 def railway_db_status_command():
     """Report Railway volume / database path status. No secrets."""
-    from database_config import format_railway_diagnostics
+    from database_config import format_cutover_diagnostics
 
-    click.echo(format_railway_diagnostics())
+    click.echo(format_cutover_diagnostics())
 
 
 @app.cli.command("init-db")

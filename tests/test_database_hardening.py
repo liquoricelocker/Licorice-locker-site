@@ -371,6 +371,9 @@ class DatabaseHardeningTests(unittest.TestCase):
             conn.close()
         os.environ["LICORICE_ENV"] = "production"
         os.environ["DATABASE_PATH"] = empty
+        volume = str(Path(empty).parent)
+        os.environ["DATABASE_VOLUME_ROOT"] = volume
+        os.environ["RAILWAY_VOLUME_MOUNT_PATH"] = volume
         with self.assertRaises(self.database_config.ProductionDatabaseError) as ctx:
             self.database.bootstrap()
         self.assertIn("unexpectedly empty", str(ctx.exception))
